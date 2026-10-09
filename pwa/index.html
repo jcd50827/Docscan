@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>DocScan</title>
+  <meta name="description" content="Dokumente scannen, ablegen und Rechnungen im Blick behalten.">
+  <meta name="theme-color" content="#1f5fbf" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#111418" media="(prefers-color-scheme: dark)">
+  <meta name="color-scheme" content="light dark">
+
+  <!-- iOS: Vollbild-App nach „Zum Home-Bildschirm“ -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="DocScan">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+  <link rel="manifest" href="manifest.webmanifest">
+
+  <link rel="stylesheet" href="styles.css">
+  <script src="config.js" defer></script>
+  <script src="api.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="topbar" id="topbar" hidden>
+    <a href="#/" class="topbar-title">DocScan</a>
+    <button class="icon-btn" id="menu-btn" type="button" aria-label="Menü" aria-haspopup="true" aria-expanded="false">
+      <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+    </button>
+    <div class="menu" id="menu" role="menu" hidden>
+      <div class="menu-user" id="menu-user"></div>
+      <a href="#/" role="menuitem" class="menu-item">Startseite</a>
+      <a href="#/liste" role="menuitem" class="menu-item" data-rolle="editor">Tracking-Liste</a>
+      <button type="button" role="menuitem" class="menu-item" id="logout-btn">Abmelden</button>
+    </div>
+  </header>
+
+  <main id="app" class="app" aria-live="polite"></main>
+
+  <div class="toast" id="toast" role="status" hidden></div>
+
+  <noscript>DocScan benötigt JavaScript.</noscript>
+</body>
+</html>
