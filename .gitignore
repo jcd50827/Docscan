@@ -1,0 +1,6 @@
+# clasp (lokale Zuordnung zum eigenen Apps-Script-Projekt)
+.clasp.json
+.clasprc.json
+
+.DS_Store
+node_modules/
