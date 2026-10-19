@@ -4,7 +4,7 @@
 // - Requests an Apps Script (POST) werden nie angefasst.
 // Bei Änderungen an der Datei-Liste CACHE_VERSION erhöhen.
 
-const CACHE_VERSION = 'v2';
+const CACHE_VERSION = 'v3';
 const SHELL_CACHE = `docscan-shell-${CACHE_VERSION}`;
 const LIB_CACHE = 'docscan-libs-v1';
 

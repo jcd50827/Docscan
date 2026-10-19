@@ -430,7 +430,7 @@
         filter: scan.filter,
         onFortschritt: (t) => setScanStatus(t)
       });
-      setScanStatus(`Wird hochgeladen (${(pdf.bytes / 1024 / 1024).toLocaleString('de-DE', { maximumFractionDigits: 1 })} MB) …`);
+      setScanStatus(`Wird hochgeladen und ausgelesen (${(pdf.bytes / 1024 / 1024).toLocaleString('de-DE', { maximumFractionDigits: 1 })} MB) – das dauert einige Sekunden …`);
       const res = await Api.upload(state.code, {
         pdfBase64: pdf.base64,
         seiten: scan.seiten.length,
@@ -453,18 +453,26 @@
 
   function renderErgebnis() {
     const d = scan.ergebnis;
+    const kurz = [d.kategorie, d.absender, typeof d.betrag === 'number' ? fmtEuro(d.betrag) : '',
+      d.faellig_am ? `fällig ${fmtDatumKurz(d.faellig_am)}` : ''].filter(Boolean).join(' – ');
     $('#app').innerHTML = `
       <section class="result">
         <div class="result-icon" aria-hidden="true">✓</div>
         <h1>Hochgeladen</h1>
+        <p class="result-summary">Erkannt als: <strong>${esc(kurz)}</strong></p>
+        ${d.duplikatVon ? `<p class="notice notice-warn">Mögliches Duplikat von „${esc(d.duplikatVon.titel)}“ vom ${esc(fmtDatum(d.duplikatVon.erstellt_am))}. Das Dokument wurde trotzdem gespeichert.</p>` : ''}
+        ${d.textErkannt === false ? '<p class="notice notice-warn">Auf dem Scan konnte kein Text erkannt werden. Bitte die Angaben prüfen.</p>' : ''}
         <div class="card result-card">
           <div class="card-main">
             <strong class="card-title">${esc(d.titel)}</strong>
-            <span class="muted">${d.seiten} ${d.seiten === 1 ? 'Seite' : 'Seiten'} · ${esc(fmtDatum(d.erstellt_am))}</span>
+            <span class="muted">${d.seiten ? `${d.seiten} ${d.seiten === 1 ? 'Seite' : 'Seiten'} · ` : ''}${esc(fmtDatum(d.erstellt_am))}</span>
           </div>
           <div class="card-side"><span class="badge">${esc(d.kategorie)}</span></div>
         </div>
-        <p class="muted">Das PDF liegt im Google Drive. Die automatische Erkennung von Kategorie, Betrag und Fälligkeit folgt im nächsten Update.</p>
+        ${dokumentFakten(d)}
+        ${isEditor() ? `
+          <button type="button" class="btn btn-secondary btn-block" id="edit-btn">Angaben korrigieren</button>
+          ${dokumentFormular(d)}` : ''}
         ${isEditor() && d.drive_url ? `<a href="${esc(d.drive_url)}" target="_blank" rel="noopener" class="btn btn-secondary btn-block">PDF in Drive öffnen</a>` : ''}
         <label class="btn btn-primary btn-block" for="cam-again">Weiteres Dokument scannen</label>
         <input type="file" id="cam-again" accept="image/*" capture="environment" hidden>
@@ -473,6 +481,114 @@
     $('#cam-again').addEventListener('change', (ev) => {
       seitenHinzufuegen(ev.target.files);
       renderScan();
+    });
+    if (isEditor()) {
+      bindeFormular(d, (aktualisiert) => {
+        scan.ergebnis = { ...scan.ergebnis, ...aktualisiert, duplikatVon: d.duplikatVon, textErkannt: d.textErkannt,
+          faelligGeschaetzt: d.faelligGeschaetzt && !('faellig_am' in aktualisiert._geaendert) };
+        renderErgebnis();
+        toast('Gespeichert.');
+      });
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Dokument-Angaben anzeigen und bearbeiten (auch für die Detailansicht in M4)
+  // -------------------------------------------------------------------------
+  const KATEGORIEN = ['Rechnung', 'Mahnung', 'Vertrag', 'Bescheid', 'Info', 'Sonstiges'];
+
+  const fmtDatumKurz = (iso) => {
+    const d = new Date(iso);
+    return isNaN(d) ? '' : `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.`;
+  };
+  const fmtIban = (iban) => String(iban || '').replace(/(.{4})/g, '$1 ').trim();
+  const alsDatumsfeld = (iso) => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (isNaN(d)) return '';
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+  const alsBetragsfeld = (n) => (typeof n === 'number' ? n.toFixed(2).replace('.', ',') : '');
+
+  function dokumentFakten(d) {
+    const geschaetzt = d.faelligGeschaetzt || String(d.notiz || '').includes('Fälligkeit geschätzt');
+    const zeilen = [
+      ['Absender', esc(d.absender)],
+      ['Betrag', typeof d.betrag === 'number' ? esc(fmtEuro(d.betrag)) : ''],
+      ['Fällig am', d.faellig_am ? esc(fmtDatum(d.faellig_am)) + (geschaetzt ? ' <span class="muted">(geschätzt)</span>' : '') : ''],
+      ['Rechnungsnr.', esc(d.rechnungsnr)],
+      ['IBAN', esc(fmtIban(d.iban))],
+      ['Status', esc(d.status)]
+    ].filter(([, wert]) => wert);
+    return zeilen.length
+      ? `<dl class="facts">${zeilen.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>`
+      : '';
+  }
+
+  function dokumentFormular(d) {
+    return `
+      <form class="edit-form" id="edit-form" hidden novalidate>
+        <label class="field-label" for="f-kategorie">Kategorie</label>
+        <select class="input" id="f-kategorie" name="kategorie">
+          ${KATEGORIEN.map((k) => `<option ${k === d.kategorie ? 'selected' : ''}>${k}</option>`).join('')}
+        </select>
+        <label class="field-label" for="f-titel">Titel</label>
+        <input class="input" id="f-titel" name="titel" maxlength="100" value="${esc(d.titel)}">
+        <label class="field-label" for="f-absender">Absender</label>
+        <input class="input" id="f-absender" name="absender" maxlength="100" value="${esc(d.absender)}">
+        <label class="field-label" for="f-betrag">Betrag (€)</label>
+        <input class="input" id="f-betrag" name="betrag" inputmode="decimal" placeholder="z. B. 84,20" value="${esc(alsBetragsfeld(d.betrag))}">
+        <label class="field-label" for="f-faellig">Fällig am</label>
+        <input class="input" id="f-faellig" name="faellig_am" type="date" value="${esc(alsDatumsfeld(d.faellig_am))}">
+        <label class="field-label" for="f-rnr">Rechnungsnummer</label>
+        <input class="input" id="f-rnr" name="rechnungsnr" maxlength="100" value="${esc(d.rechnungsnr)}">
+        <label class="field-label" for="f-iban">IBAN</label>
+        <input class="input" id="f-iban" name="iban" autocapitalize="characters" autocorrect="off" spellcheck="false" value="${esc(fmtIban(d.iban))}">
+        <p class="form-error" id="edit-error" role="alert" hidden></p>
+        <button type="submit" class="btn btn-primary btn-block" id="edit-save">Speichern</button>
+        <button type="button" class="btn btn-ghost btn-block" id="edit-cancel">Abbrechen</button>
+      </form>`;
+  }
+
+  /** Verdrahtet „Angaben korrigieren“; schickt nur geänderte Felder an die API. */
+  function bindeFormular(d, onGespeichert) {
+    const form = $('#edit-form');
+    const btn = $('#edit-btn');
+    const ausgangswerte = () => ({
+      kategorie: d.kategorie || '',
+      titel: d.titel || '',
+      absender: d.absender || '',
+      betrag: alsBetragsfeld(d.betrag),
+      faellig_am: alsDatumsfeld(d.faellig_am),
+      rechnungsnr: d.rechnungsnr || '',
+      iban: fmtIban(d.iban)
+    });
+    btn.addEventListener('click', () => { form.hidden = false; btn.hidden = true; $('#f-kategorie').focus(); });
+    $('#edit-cancel').addEventListener('click', () => { form.hidden = true; btn.hidden = false; });
+    form.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const vorher = ausgangswerte();
+      const felder = {};
+      Object.keys(vorher).forEach((k) => {
+        const wert = form.elements[k].value.trim();
+        if (wert !== vorher[k]) felder[k] = wert;
+      });
+      const fehler = $('#edit-error');
+      fehler.hidden = true;
+      if (!Object.keys(felder).length) { form.hidden = true; btn.hidden = false; return; }
+      const speichern = $('#edit-save');
+      speichern.disabled = true;
+      speichern.textContent = 'Wird gespeichert …';
+      try {
+        const res = await Api.update(state.code, { id: d.id, felder });
+        onGespeichert({ ...res.dokument, _geaendert: felder });
+      } catch (err) {
+        if (err.auth) return logout(err.message);
+        fehler.textContent = err.offline ? 'Keine Verbindung. Bitte später erneut speichern.' : err.message;
+        fehler.hidden = false;
+        speichern.disabled = false;
+        speichern.textContent = 'Speichern';
+      }
     });
   }
 

@@ -52,6 +52,7 @@
     isConfigured,
     login: (code) => call('login', code),
     upload: (code, payload) => call('upload', code, payload),
+    update: (code, payload) => call('update', code, payload),
     listMine: (code) => call('listMine', code),
     stats: (code) => call('stats', code)
   };
