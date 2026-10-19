@@ -54,6 +54,9 @@
     upload: (code, payload) => call('upload', code, payload),
     update: (code, payload) => call('update', code, payload),
     listMine: (code) => call('listMine', code),
+    list: (code, filter) => call('list', code, { filter }),
+    setStatus: (code, payload) => call('setStatus', code, payload),
+    delete: (code, payload) => call('delete', code, payload),
     stats: (code) => call('stats', code)
   };
 })();

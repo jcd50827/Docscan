@@ -72,12 +72,24 @@
   };
 
   let toastTimer = null;
-  function toast(text) {
+  /** Kurzer Hinweis unten; optional mit Aktion, z. B. { label: 'Rückgängig', fn }. */
+  function toast(text, aktion) {
     const el = $('#toast');
-    el.textContent = text;
+    el.textContent = '';
+    const span = document.createElement('span');
+    span.textContent = text;
+    el.appendChild(span);
+    if (aktion) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'toast-action';
+      btn.textContent = aktion.label;
+      btn.addEventListener('click', () => { el.hidden = true; aktion.fn(); });
+      el.appendChild(btn);
+    }
     el.hidden = false;
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => { el.hidden = true; }, 3500);
+    toastTimer = setTimeout(() => { el.hidden = true; }, aktion ? 6000 : 3500);
   }
 
   // -------------------------------------------------------------------------
@@ -108,7 +120,8 @@
     '#/login': renderLogin,
     '#/': renderHome,
     '#/scan': renderScan,
-    '#/liste': renderListe
+    '#/liste': renderListe,
+    '#/dok': renderDetail
   };
 
   function route() {
@@ -116,13 +129,16 @@
     let hash = location.hash || '#/';
     if (!state.code || !state.nutzer) hash = '#/login';
     else if (hash === '#/login') hash = '#/';
-    if (hash === '#/liste' && !isEditor()) hash = '#/';
-    if (!routes[hash]) hash = '#/';
+    // #/dok/<id> → Route „#/dok“ mit Parameter
+    const m = /^#\/dok\/([\w-]+)$/.exec(hash);
+    let key = m ? '#/dok' : hash;
+    if ((key === '#/liste' || key === '#/dok') && !isEditor()) key = hash = '#/';
+    if (!routes[key]) key = hash = '#/';
     if (location.hash !== hash) history.replaceState(null, '', hash);
 
     state.renderToken++;
     updateChrome();
-    routes[hash](state.renderToken);
+    routes[key](state.renderToken, m ? m[1] : null);
     window.scrollTo(0, 0);
   }
 
@@ -256,19 +272,19 @@
       box.innerHTML = `
         <h2>Übersicht</h2>
         <div class="stats">
-          <div class="stat stat-wide">
+          <a class="stat stat-wide" href="#/liste">
             <span class="stat-label">Summe offen</span>
             <span class="stat-value">${esc(fmtEuro(s.summeOffen))}</span>
             <span class="stat-sub">${s.anzahlOffen} ${s.anzahlOffen === 1 ? 'Rechnung' : 'Rechnungen'}</span>
-          </div>
-          <div class="stat ${s.anzahlUeberfaellig > 0 ? 'stat-danger' : ''}">
+          </a>
+          <a class="stat ${s.anzahlUeberfaellig > 0 ? 'stat-danger' : ''}" href="#/liste">
             <span class="stat-label">Überfällig</span>
             <span class="stat-value">${s.anzahlUeberfaellig}</span>
-          </div>
-          <div class="stat">
+          </a>
+          <a class="stat" href="#/liste">
             <span class="stat-label">Nächste 7 Tage</span>
             <span class="stat-value">${naechste.length}</span>
-          </div>
+          </a>
         </div>
         ${naechste.length ? `
           <h2>Bald fällig</h2>
@@ -281,12 +297,14 @@
 
   function faelligCard(d) {
     return `
-      <li class="card">
-        <div class="card-main">
-          <strong class="card-title">${esc(d.absender || d.titel || d.kategorie)}</strong>
-          <span class="muted">fällig ${esc(fmtDatum(d.faellig_am))}</span>
-        </div>
-        <div class="card-side"><strong>${esc(fmtEuro(d.betrag))}</strong></div>
+      <li>
+        <a class="card card-link" href="#/dok/${esc(d.id)}">
+          <div class="card-main">
+            <strong class="card-title">${esc(d.absender || d.titel || d.kategorie)}</strong>
+            <span class="muted">fällig ${esc(fmtDatum(d.faellig_am))}</span>
+          </div>
+          <div class="card-side"><strong>${esc(fmtEuro(d.betrag))}</strong></div>
+        </a>
       </li>`;
   }
 
@@ -518,7 +536,9 @@
       ['Fällig am', d.faellig_am ? esc(fmtDatum(d.faellig_am)) + (geschaetzt ? ' <span class="muted">(geschätzt)</span>' : '') : ''],
       ['Rechnungsnr.', esc(d.rechnungsnr)],
       ['IBAN', esc(fmtIban(d.iban))],
-      ['Status', esc(d.status)]
+      ['Status', esc(d.status)],
+      ['Bezahlt', d.bezahlt_am ? esc(fmtDatum(d.bezahlt_am)) + (d.bezahlt_von ? ` von ${esc(d.bezahlt_von)}` : '') : ''],
+      ['Notiz', esc(d.notiz)]
     ].filter(([, wert]) => wert);
     return zeilen.length
       ? `<dl class="facts">${zeilen.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>`
@@ -593,13 +613,286 @@
   }
 
   // -------------------------------------------------------------------------
-  // Ansicht: Tracking-Liste (Editor) – folgt in Meilenstein 4
+  // Ansicht: Tracking-Liste (Editor)
   // -------------------------------------------------------------------------
-  function renderListe() {
+  const liste = {
+    filter: { status: 'offen', kategorie: '', suche: '' },
+    dokumente: [],
+    gesamt: 0,
+    cache: new Map(),   // id → Dokument (auch für die Detailansicht)
+    entfernt: new Map() // id → frühere Position nach dem Abhaken
+  };
+  const ZAHLUNG = ['Rechnung', 'Mahnung'];
+  const STATUS_FILTER = [['offen', 'Offen'], ['bezahlt', 'Bezahlt'], ['alle', 'Alle']];
+
+  function heute0() {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  }
+  const istUeberfaellig = (d) => d.status === 'offen' && d.faellig_am && new Date(d.faellig_am) < heute0();
+
+  function merkeDokumente(doks) {
+    doks.forEach((d) => liste.cache.set(d.id, d));
+  }
+
+  function renderListe(token) {
+    const f = liste.filter;
     $('#app').innerHTML = `
       <h1>Tracking-Liste</h1>
-      <p class="empty">Die Tracking-Liste mit Filtern und Abhaken folgt in einem späteren Update.</p>
-      <a href="#/" class="btn btn-secondary btn-block">Zurück zur Startseite</a>`;
+      <div class="chips" role="group" aria-label="Status">
+        ${STATUS_FILTER.map(([wert, label]) => `
+          <button type="button" class="chip ${f.status === wert ? 'chip-active' : ''}" data-status="${wert}" aria-pressed="${f.status === wert}">${label}</button>`).join('')}
+        <select class="chip chip-select ${f.kategorie ? 'chip-active' : ''}" id="kat-filter" aria-label="Kategorie">
+          <option value="">Kategorie</option>
+          ${KATEGORIEN.map((k) => `<option ${k === f.kategorie ? 'selected' : ''}>${k}</option>`).join('')}
+        </select>
+      </div>
+      <input type="search" class="input search" id="suche" placeholder="Suchen: Absender, Titel, Rechnungsnr. …"
+             value="${esc(f.suche)}" autocomplete="off" enterkeyhint="search">
+      <p class="list-summary muted" id="list-summary"></p>
+      <ul class="cards" id="doc-list"><li class="muted">Wird geladen …</li></ul>`;
+
+    document.querySelectorAll('[data-status]').forEach((b) => b.addEventListener('click', () => {
+      liste.filter.status = b.dataset.status;
+      renderListe(state.renderToken);
+    }));
+    $('#kat-filter').addEventListener('change', (ev) => {
+      liste.filter.kategorie = ev.target.value;
+      renderListe(state.renderToken);
+    });
+    let suchTimer = null;
+    $('#suche').addEventListener('input', (ev) => {
+      clearTimeout(suchTimer);
+      suchTimer = setTimeout(() => {
+        liste.filter.suche = ev.target.value.trim();
+        ladeListe(state.renderToken);
+      }, 350);
+    });
+
+    const ul = $('#doc-list');
+    ul.addEventListener('change', (ev) => {
+      const box = ev.target.closest('[data-pay]');
+      if (box) bezahltUmschalten(box.dataset.pay);
+    });
+    ul.addEventListener('click', (ev) => {
+      if (ev.target.closest('.pay-check')) return;
+      const karte = ev.target.closest('[data-open]');
+      if (karte && !karte.dataset.swiped) location.hash = `#/dok/${karte.dataset.open}`;
+    });
+    wischenAktivieren(ul);
+    ladeListe(token);
+  }
+
+  async function ladeListe(token) {
+    try {
+      const res = await Api.list(state.code, { ...liste.filter });
+      if (veraltet(token)) return;
+      liste.dokumente = res.dokumente || [];
+      liste.gesamt = res.gesamt || liste.dokumente.length;
+      liste.entfernt.clear();
+      merkeDokumente(liste.dokumente);
+      renderEintraege();
+    } catch (err) {
+      if (!veraltet(token)) handleApiError(err, $('#doc-list'));
+    }
+  }
+
+  function renderEintraege() {
+    const ul = $('#doc-list');
+    if (!ul) return;
+    const doks = liste.dokumente;
+    const offen = doks.filter((d) => d.status === 'offen' && typeof d.betrag === 'number');
+    const summe = offen.reduce((a, d) => a + d.betrag, 0);
+    $('#list-summary').textContent = doks.length
+      ? `${liste.gesamt} ${liste.gesamt === 1 ? 'Dokument' : 'Dokumente'}` +
+        (offen.length ? ` · offen: ${fmtEuro(summe)}` : '') +
+        (liste.gesamt > doks.length ? ` · die ersten ${doks.length} werden angezeigt` : '')
+      : '';
+    ul.innerHTML = doks.length
+      ? doks.map(dokumentKarte).join('')
+      : `<li class="empty">${liste.filter.suche || liste.filter.kategorie ? 'Keine Treffer.' : liste.filter.status === 'offen' ? 'Keine offenen Rechnungen. 🎉' : 'Keine Dokumente.'}</li>`;
+  }
+
+  function dokumentKarte(d) {
+    const zahlung = ZAHLUNG.includes(d.kategorie);
+    const ueber = istUeberfaellig(d);
+    const unterzeile = [
+      d.kategorie,
+      d.faellig_am && d.status === 'offen' ? (ueber ? `überfällig seit ${fmtDatum(d.faellig_am)}` : `fällig ${fmtDatum(d.faellig_am)}`) : '',
+      d.status === 'bezahlt' && d.bezahlt_am ? `bezahlt ${fmtDatum(d.bezahlt_am)}` : '',
+      !zahlung ? fmtDatum(d.erstellt_am) : ''
+    ].filter(Boolean).join(' · ');
+    return `
+      <li class="swipe" data-id="${esc(d.id)}">
+        ${zahlung ? `<div class="swipe-bg" aria-hidden="true"><span>${d.status === 'bezahlt' ? '↺ Offen' : '✓ Bezahlt'}</span><span>${d.status === 'bezahlt' ? '↺ Offen' : '✓ Bezahlt'}</span></div>` : ''}
+        <div class="card doc-card ${ueber ? 'card-overdue' : ''} ${d.status === 'bezahlt' ? 'card-done' : ''}" data-open="${esc(d.id)}" role="link" tabindex="0">
+          ${zahlung ? `
+            <label class="pay-check" aria-label="Als bezahlt markieren">
+              <input type="checkbox" data-pay="${esc(d.id)}" ${d.status === 'bezahlt' ? 'checked' : ''}>
+            </label>` : ''}
+          <div class="card-main">
+            <strong class="card-title">${esc(d.absender || d.titel)}</strong>
+            <span class="muted card-sub">${esc(unterzeile)}</span>
+          </div>
+          <div class="card-side">
+            ${typeof d.betrag === 'number' ? `<strong>${esc(fmtEuro(d.betrag))}</strong>` : ''}
+            <span class="status status-${esc(d.status)}">${esc(d.status)}</span>
+          </div>
+        </div>
+      </li>`;
+  }
+
+  /** Bezahlt ⇄ offen, sofort sichtbar; mit „Rückgängig“-Toast. */
+  async function bezahltUmschalten(id, zielStatus) {
+    const d = liste.cache.get(id);
+    if (!d) return;
+    const vorher = d.status;
+    const neu = zielStatus || (vorher === 'bezahlt' ? 'offen' : 'bezahlt');
+    if (neu === vorher) return;
+    const anwenden = (status, felder = {}) => {
+      Object.assign(d, { status, ...felder });
+      const passt = liste.filter.status === 'alle' || liste.filter.status === status;
+      const i = liste.dokumente.findIndex((x) => x.id === id);
+      if (!passt && i >= 0) {
+        liste.dokumente.splice(i, 1);
+        liste.gesamt--;
+        liste.entfernt.set(id, i);      // Position merken für „Rückgängig“
+      }
+      if (passt && i < 0 && liste.entfernt.has(id)) {
+        liste.dokumente.splice(Math.min(liste.entfernt.get(id), liste.dokumente.length), 0, d);
+        liste.gesamt++;
+        liste.entfernt.delete(id);
+      }
+      renderEintraege();
+    };
+
+    anwenden(neu, neu === 'bezahlt' ? { bezahlt_am: new Date().toISOString(), bezahlt_von: state.nutzer.name } : { bezahlt_am: null, bezahlt_von: '' });
+    try {
+      const res = await Api.setStatus(state.code, { id, status: neu });
+      Object.assign(d, res.dokument);
+      if (location.hash === '#/liste') renderEintraege();
+      toast(neu === 'bezahlt' ? 'Als bezahlt markiert.' : 'Wieder als offen markiert.', {
+        label: 'Rückgängig',
+        fn: () => bezahltUmschalten(id, vorher)
+      });
+    } catch (err) {
+      anwenden(vorher);
+      if (err.auth) return logout(err.message);
+      toast(err.offline ? 'Keine Verbindung – Status nicht geändert.' : err.message);
+    }
+  }
+
+  /** Karte nach links oder rechts wischen → bezahlt/offen umschalten. */
+  function wischenAktivieren(ul) {
+    let start = null;
+    ul.addEventListener('touchstart', (ev) => {
+      const karte = ev.target.closest('.doc-card');
+      if (!karte || !karte.parentElement.querySelector('.swipe-bg') || ev.touches.length !== 1) return;
+      start = { x: ev.touches[0].clientX, y: ev.touches[0].clientY, karte, dx: 0, aktiv: false };
+      delete karte.dataset.swiped;
+    }, { passive: true });
+    ul.addEventListener('touchmove', (ev) => {
+      if (!start) return;
+      const dx = ev.touches[0].clientX - start.x;
+      const dy = ev.touches[0].clientY - start.y;
+      if (!start.aktiv) {
+        if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) { start = null; return; } // Scrollen
+        if (Math.abs(dx) < 10) return;
+        start.aktiv = true;
+        start.karte.classList.add('swiping');
+      }
+      start.dx = dx;
+      start.karte.style.transform = `translateX(${dx}px)`;
+    }, { passive: true });
+    const ende = () => {
+      if (!start) return;
+      const { karte, dx, aktiv } = start;
+      start = null;
+      karte.classList.remove('swiping');
+      karte.style.transform = '';
+      if (!aktiv) return;
+      karte.dataset.swiped = '1';                       // folgenden Klick nicht als „öffnen“ werten
+      setTimeout(() => { delete karte.dataset.swiped; }, 400);
+      if (Math.abs(dx) > 90) bezahltUmschalten(karte.dataset.open);
+    };
+    ul.addEventListener('touchend', ende);
+    ul.addEventListener('touchcancel', ende);
+  }
+
+  // -------------------------------------------------------------------------
+  // Ansicht: Detail (Editor)
+  // -------------------------------------------------------------------------
+  async function renderDetail(token, id) {
+    let d = liste.cache.get(id);
+    if (!d) {
+      $('#app').innerHTML = '<p class="muted">Wird geladen …</p>';
+      try {
+        const res = await Api.list(state.code, { id });
+        if (veraltet(token)) return;
+        d = (res.dokumente || [])[0];
+        if (!d) {
+          $('#app').innerHTML = '<p class="notice notice-error">Dokument nicht gefunden (evtl. gelöscht).</p><a href="#/liste" class="btn btn-secondary btn-block">Zur Tracking-Liste</a>';
+          return;
+        }
+        merkeDokumente([d]);
+      } catch (err) {
+        if (!veraltet(token)) handleApiError(err, $('#app'));
+        return;
+      }
+    }
+    zeigeDetail(d);
+  }
+
+  function zeigeDetail(d) {
+    const zahlung = ZAHLUNG.includes(d.kategorie);
+    const duplikat = /Mögliches Duplikat von ([\w-]+)/.exec(d.notiz || '');
+    $('#app').innerHTML = `
+      <a href="#/liste" class="back-link">‹ Tracking-Liste</a>
+      <h1 class="detail-title">${esc(d.titel)}</h1>
+      <p class="muted detail-meta"><span class="badge">${esc(d.kategorie)}</span>
+        hochgeladen ${esc(fmtDatum(d.erstellt_am))}${d.hochgeladen_von ? ` von ${esc(d.hochgeladen_von)}` : ''}</p>
+      ${istUeberfaellig(d) ? `<p class="notice notice-error">Überfällig seit ${esc(fmtDatum(d.faellig_am))}.</p>` : ''}
+      ${duplikat ? `<p class="notice notice-warn">Mögliches Duplikat – <a href="#/dok/${esc(duplikat[1])}">anderes Dokument ansehen</a>.</p>` : ''}
+      ${dokumentFakten(d)}
+      ${zahlung ? `<button type="button" class="btn ${d.status === 'bezahlt' ? 'btn-secondary' : 'btn-primary'} btn-block" id="status-btn">
+          ${d.status === 'bezahlt' ? 'Wieder als offen markieren' : '✓ Als bezahlt markieren'}</button>` : ''}
+      <button type="button" class="btn btn-secondary btn-block" id="edit-btn">Angaben korrigieren</button>
+      ${dokumentFormular(d)}
+      ${d.drive_url ? `<a href="${esc(d.drive_url)}" target="_blank" rel="noopener" class="btn btn-secondary btn-block">PDF in Drive öffnen</a>` : ''}
+      <button type="button" class="btn btn-danger btn-block" id="delete-btn">Löschen</button>`;
+
+    if (zahlung) {
+      $('#status-btn').addEventListener('click', async () => {
+        await bezahltUmschalten(d.id);
+        if (location.hash === `#/dok/${d.id}`) zeigeDetail(liste.cache.get(d.id));
+      });
+    }
+    bindeFormular(d, (aktualisiert) => {
+      const neu = { ...d, ...aktualisiert };
+      delete neu._geaendert;
+      liste.cache.set(d.id, neu);
+      const i = liste.dokumente.findIndex((x) => x.id === d.id);
+      if (i >= 0) liste.dokumente[i] = neu;
+      zeigeDetail(neu);
+      toast('Gespeichert.');
+    });
+    $('#delete-btn').addEventListener('click', async () => {
+      if (!confirm(`„${d.titel}“ wirklich löschen?\n\nDie PDF bleibt im Google Drive erhalten.`)) return;
+      const btn = $('#delete-btn');
+      btn.disabled = true;
+      try {
+        await Api.delete(state.code, { id: d.id });
+        liste.cache.delete(d.id);
+        if (liste.dokumente.some((x) => x.id === d.id)) liste.gesamt--;
+        liste.dokumente = liste.dokumente.filter((x) => x.id !== d.id);
+        location.hash = '#/liste';
+        toast('Gelöscht.');
+      } catch (err) {
+        btn.disabled = false;
+        if (err.auth) return logout(err.message);
+        toast(err.offline ? 'Keine Verbindung – nicht gelöscht.' : err.message);
+      }
+    });
   }
 
   // -------------------------------------------------------------------------

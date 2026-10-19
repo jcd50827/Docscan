@@ -332,3 +332,62 @@ label.btn, label.btn-scan { cursor: pointer; -webkit-user-select: none; user-sel
 .facts dd { margin: 0; overflow-wrap: anywhere; }
 .edit-form { text-align: left; margin-top: 8px; }
 select.input { -webkit-appearance: none; appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%); background-position: calc(100% - 20px) 50%, calc(100% - 14px) 50%; background-size: 6px 6px; background-repeat: no-repeat; }
+
+/* ---- Tracking-Liste ---- */
+a.stat { color: inherit; text-decoration: none; }
+a.card-link { color: inherit; text-decoration: none; }
+
+.chips { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 10px; -webkit-overflow-scrolling: touch; }
+.chip {
+  flex-shrink: 0;
+  min-height: 40px;
+  padding: 0 16px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit; font-size: 0.95rem;
+  cursor: pointer;
+}
+.chip-active { background: var(--primary); border-color: var(--primary); color: var(--primary-text); }
+.chip-select { -webkit-appearance: none; appearance: none; padding-right: 16px; }
+.search { margin-bottom: 6px; }
+.list-summary { min-height: 1.4em; margin: 4px 0 10px; font-size: 0.9rem; }
+
+.swipe { position: relative; border-radius: var(--radius); }
+.swipe-bg {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 20px;
+  border-radius: var(--radius);
+  background: var(--primary); color: var(--primary-text);
+  font-weight: 700;
+}
+.doc-card { position: relative; cursor: pointer; transition: transform 0.2s ease; }
+.doc-card.swiping { transition: none; }
+.card-sub { font-size: 0.85rem; }
+.card-overdue { border-color: var(--danger); background: var(--danger-soft); }
+.card-overdue .card-sub { color: var(--danger); }
+.card-done .card-title { color: var(--muted); }
+
+.pay-check { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; margin: -8px 0 -8px -6px; flex-shrink: 0; }
+.pay-check input { width: 24px; height: 24px; accent-color: var(--primary); cursor: pointer; }
+
+.status { font-size: 0.75rem; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--primary-soft); color: var(--primary); }
+.status-bezahlt { background: #e3f4e8; color: #1e7a3a; }
+.status-erledigt { background: var(--border); color: var(--muted); }
+@media (prefers-color-scheme: dark) {
+  .status-bezahlt { background: #16321f; color: #6fd68f; }
+}
+
+/* ---- Detail ---- */
+.back-link { display: inline-flex; align-items: center; min-height: var(--tap); text-decoration: none; font-weight: 600; }
+.detail-title { margin-top: 0; overflow-wrap: anywhere; }
+.detail-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: -6px; }
+.btn-danger { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
+
+/* ---- Toast mit Aktion ---- */
+.toast { display: flex; align-items: center; justify-content: space-between; gap: 16px; width: max-content; min-width: min(320px, calc(100% - 32px)); }
+.toast span { flex: 1 1 auto; }
+.toast-action { border: 0; background: none; color: #8fb8ff; font: inherit; font-weight: 700; padding: 4px 0; cursor: pointer; white-space: nowrap; }
+@media (prefers-color-scheme: dark) { .toast-action { color: #1f5fbf; } }
