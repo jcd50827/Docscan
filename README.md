@@ -6,7 +6,7 @@ Dokumente mit dem Handy scannen, im eigenen Google Drive ablegen und Rechnungen 
 - **Backend:** Google Apps Script unter deinem Google-Konto.
 - **Daten:** ein Google Sheet (Nutzer, Dokumente, Log, Regeln) und ein Ordner `DocScan` in deinem Google Drive.
 
-> **Stand: Meilenstein 3 (Texterkennung & Kategorisierung).** Einrichtung, Nutzerverwaltung, Anmeldung, Scannen mehrerer Seiten und Ablage im Google Drive funktionieren. Gescannte Dokumente werden per Texterkennung ausgelesen, kategorisiert (Rechnung, Mahnung, Vertrag, Bescheid, Info, Sonstiges), mit Absender, Betrag, Fälligkeit, IBAN und Rechnungsnummer versehen, passend benannt und einsortiert. Editoren können die Erkennung direkt korrigieren. Die Tracking-Liste folgt in Meilenstein 4.
+> **Stand: Meilenstein 4 (Tracking-Liste).** Scannen, Ablage im Google Drive, Texterkennung und Kategorisierung funktionieren. Editoren haben eine Tracking-Liste mit Filtern, Suche, Abhaken (Checkbox oder Wischen, mit „Rückgängig“), Detailansicht zum Bearbeiten und Löschen sowie die Übersicht auf der Startseite. Offline-Warteschlange, Mail-Erinnerungen, GiroCode, CSV-Export und Kantenerkennung folgen in Meilenstein 5.
 
 ---
 
@@ -112,17 +112,28 @@ Die App selbst (GitHub Pages) aktualisiert sich automatisch. Das Apps Script mus
 4. **Bereitstellen → Bereitstellungen verwalten → Bearbeiten (Stift) → Version: „Neue Version“ → Bereitstellen.**
    Wichtig: *nicht* „Neue Bereitstellung“, sonst ändert sich die URL.
 
-**Meilenstein 3 ändert:** [`Code.gs`](https://raw.githubusercontent.com/jcd50827/Docscan/main/apps-script/Code.gs) und [`Documents.gs`](https://raw.githubusercontent.com/jcd50827/Docscan/main/apps-script/Documents.gs); **neu anlegen:** [`Classify.gs`](https://raw.githubusercontent.com/jcd50827/Docscan/main/apps-script/Classify.gs) und [`Ocr.gs`](https://raw.githubusercontent.com/jcd50827/Docscan/main/apps-script/Ocr.gs) (links **+ → Skript**, Name ohne `.gs`).
+**Meilenstein 4 ändert:** [`Code.gs`](https://raw.githubusercontent.com/jcd50827/Docscan/main/apps-script/Code.gs) und [`Documents.gs`](https://raw.githubusercontent.com/jcd50827/Docscan/main/apps-script/Documents.gs).
 
-**Einmalig nach Meilenstein 3 – neue Berechtigung erteilen:** Die Texterkennung braucht Zugriff auf Google Docs. Im Script-Editor oben die Funktion **`testOcr`** wählen → **Ausführen** → Berechtigungen wie bei der Einrichtung erlauben (**alle** Häkchen setzen). Im Ausführungsprotokoll erscheinen danach der erkannte Text deines letzten Scans und die Auswertung. Ohne diesen Schritt landet jeder Scan als „Sonstiges“.
-
-Zum Prüfen der Erkennungsregeln gibt es außerdem **`testClassify`**: Ausführen → im Protokoll sollte „Alle Fälle korrekt erkannt.“ stehen.
+(Meilenstein 3 hatte `Code.gs` und `Documents.gs` geändert und `Classify.gs` sowie `Ocr.gs` neu hinzugefügt – danach einmal **`testOcr`** im Script-Editor ausführen und die neue Berechtigung für Google Docs erlauben, sonst landet jeder Scan als „Sonstiges“.)
 
 (Meilenstein 2 hatte `Code.gs`, `Documents.gs` und `Setup.gs` geändert – danach einmal **DocScan → Einrichtung ausführen**.)
 
 Auf dem iPhone die App danach einmal schließen und neu öffnen, damit die neue Version geladen wird.
 
 ---
+
+## Test-Checkliste Meilenstein 4 (Editor, auf dem iPhone)
+
+- [ ] Menü **⋮ → Tracking-Liste** zeigt zunächst die **offenen** Dokumente, überfällige zuerst und rot markiert, darunter die nächsten Fälligkeiten.
+- [ ] Jede Karte zeigt Absender, Betrag, Fälligkeit und Status; oben steht die Anzahl und die offene Summe.
+- [ ] Filter-Chips **Offen / Bezahlt / Alle** und **Kategorie** schränken die Liste ein; die **Suche** findet Absender, Titel, Rechnungsnummer, Betrag (z. B. „84,20“) und Wörter aus dem Dokumenttext.
+- [ ] **Checkbox** antippen → Karte verschwindet aus „Offen“, unten erscheint „Als bezahlt markiert · **Rückgängig**“; Rückgängig holt sie zurück.
+- [ ] Karte **nach links oder rechts wischen** → ebenfalls als bezahlt markiert.
+- [ ] Im Sheet stehen bei bezahlten Rechnungen `bezahlt_am` und `bezahlt_von`; im **Log** „status_bezahlt“ bzw. „status_offen“.
+- [ ] Karte antippen → **Detailansicht** mit allen Angaben, „Als bezahlt markieren“, „Angaben korrigieren“, „PDF in Drive öffnen“ und **Löschen** (mit Rückfrage).
+- [ ] Nach dem Löschen ist das Dokument aus Liste und Übersicht verschwunden; im Sheet steht `geloescht` = TRUE, die PDF liegt weiter im Drive.
+- [ ] Startseite: Kacheln **Summe offen / Überfällig / Nächste 7 Tage** führen zur Liste, die „Bald fällig“-Karten direkt zum Dokument.
+- [ ] Contributor sehen weder die Tracking-Liste noch Detailansichten.
 
 ## Test-Checkliste Meilenstein 3
 
@@ -179,7 +190,7 @@ pwa/                 statische PWA (kein Build-Schritt), wird auf GitHub Pages v
 apps-script/         Google Apps Script (V8)
   Code.gs            doGet/doPost, Routing, Sheet-Hilfsfunktionen
   Auth.gs            Zugangscodes (SHA-256), Rollen, Brute-Force-Schutz
-  Documents.gs       Upload & Drive-Ablage, Korrektur (update), Lesen (listMine, stats)
+  Documents.gs       Upload & Drive-Ablage, Korrektur, Tracking-Liste, Status, Löschen, Übersicht
   Ocr.gs             Texterkennung über Drive-Konvertierung (+ testOcr)
   Classify.gs        Kategorisierung & Feldextraktion, regelbasiert (+ testClassify)
   Setup.gs           setup(), Menü, „Nutzer anlegen“
@@ -189,7 +200,7 @@ apps-script/         Google Apps Script (V8)
 
 Die vollständige Spezifikation steht in [`CLAUDE.md`](CLAUDE.md).
 
-### API (Stand Meilenstein 3)
+### API (Stand Meilenstein 4)
 
 Alle Requests: `POST` an die Web-App-URL, `Content-Type: text/plain;charset=utf-8`, Body `{ action, code, ...payload }`.
 
@@ -199,6 +210,9 @@ Alle Requests: `POST` an die Web-App-URL, `Content-Type: text/plain;charset=utf-
 | `upload` | alle | Payload `{ pdfBase64, seiten, titelVorschlag? }` → `{ ok, dokument }` inkl. erkannter Felder, `faelligGeschaetzt`, `textErkannt`, `duplikatVon` |
 | `update` | editor | Payload `{ id, felder: { kategorie, titel, absender, betrag, faellig_am (JJJJ-MM-TT), iban, rechnungsnr, notiz } }` → `{ ok, dokument }`; PDF wird umbenannt/verschoben |
 | `listMine` | alle | `{ ok, dokumente: [...] }` (eigene Uploads, 7 Tage) |
+| `list` | editor | Payload `{ filter: { status: offen\|bezahlt\|erledigt\|alle, kategorie, suche, id } }` → `{ ok, dokumente, gesamt }` (offene nach Fälligkeit, max. 300) |
+| `setStatus` | editor | Payload `{ id, status }` → `{ ok, dokument }`; „bezahlt“ setzt `bezahlt_am`/`bezahlt_von` |
+| `delete` | editor | Payload `{ id }` → `{ ok, id }`; Soft Delete (`geloescht` = TRUE), PDF bleibt im Drive |
 | `stats` | editor | `{ ok, summeOffen, anzahlOffen, anzahlUeberfaellig, naechsteFaelligkeiten }` |
 
 Fehler: `{ ok: false, error: "…" }`; bei ungültigem oder deaktiviertem Code zusätzlich `auth: true`, damit die App abmeldet. Nach 10 Fehlversuchen pro Code-Präfix ist dieser Präfix 15 Minuten gesperrt.
