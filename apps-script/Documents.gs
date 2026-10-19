@@ -192,6 +192,39 @@ function actionDelete_(nutzer, body) {
   return { id: alt.id };
 }
 
+/**
+ * CSV-Export aller (nicht gelöschten) Dokumente eines Jahres (nach Upload-Datum).
+ * Semikolon, Dezimalkomma, Datum TT.MM.JJJJ – öffnet sich so direkt in Excel/Numbers.
+ */
+function actionExportCsv_(nutzer, body) {
+  var jahr = Number(body.jahr);
+  if (!(jahr >= 2000 && jahr <= 2100)) throw fehler_('Bitte ein gültiges Jahr angeben.');
+  var tz = Session.getScriptTimeZone();
+  var datum = function (d) { return d ? Utilities.formatDate(d, tz, 'dd.MM.yyyy') : ''; };
+  var doks = readDocuments_()
+    .filter(function (d) { return d.erstellt_am && Number(Utilities.formatDate(d.erstellt_am, tz, 'yyyy')) === jahr; })
+    .sort(function (a, b) { return a.erstellt_am - b.erstellt_am; });
+
+  var kopf = ['Hochgeladen am', 'Kategorie', 'Titel', 'Absender', 'Betrag (EUR)', 'Fällig am', 'Status',
+    'Bezahlt am', 'Bezahlt von', 'IBAN', 'Rechnungsnr.', 'Hochgeladen von', 'Notiz', 'PDF'];
+  var zeilen = doks.map(function (d) {
+    return [datum(d.erstellt_am), d.kategorie, d.titel, d.absender,
+      typeof d.betrag === 'number' ? d.betrag.toFixed(2).replace('.', ',') : '',
+      datum(d.faellig_am), d.status, datum(d.bezahlt_am), d.bezahlt_von, d.iban, d.rechnungsnr,
+      d.hochgeladen_von, d.notiz, d.drive_url];
+  });
+  var csv = [kopf].concat(zeilen).map(function (z) { return z.map(csvZelle_).join(';'); }).join('\r\n');
+  log_(nutzer.name, 'export_csv ' + jahr, '');
+  return { dateiname: 'DocScan_' + jahr + '.csv', csv: csv, anzahl: doks.length };
+}
+
+/** Anführungszeichen verdoppeln; Text mit = + - @ am Anfang entschärfen (keine Formeln in Excel). */
+function csvZelle_(wert) {
+  var s = String(wert == null ? '' : wert);
+  if (/^[=+\-@]/.test(s) && !/^-?\d+(,\d+)?$/.test(s)) s = "'" + s;
+  return /[;"\r\n]/.test(s) || s !== s.trim() ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
 /** Neuester nicht gelöschter Eintrag mit gleichem Fingerprint, sonst null. */
 function findeDuplikat_(fingerprint) {
   if (!fingerprint) return null;

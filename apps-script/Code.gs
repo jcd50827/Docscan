@@ -23,6 +23,7 @@ function getActions_() {
     list:     { rolle: 'editor', schreibend: false, fn: actionList_ },
     setStatus:{ rolle: 'editor', schreibend: true,  fn: actionSetStatus_ },
     delete:   { rolle: 'editor', schreibend: true,  fn: actionDelete_ },
+    exportCsv:{ rolle: 'editor', schreibend: false, fn: actionExportCsv_ },
     listMine: { rolle: null,     schreibend: false, fn: actionListMine_ },
     stats:    { rolle: 'editor', schreibend: false, fn: actionStats_ }
   };

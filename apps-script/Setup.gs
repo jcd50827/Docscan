@@ -33,6 +33,7 @@ function onOpen() {
     .createMenu('DocScan')
     .addItem('Nutzer anlegen', 'nutzerAnlegen')
     .addSeparator()
+    .addItem('Erinnerungs-Mail jetzt senden', 'testErinnerung')
     .addItem('Einrichtung ausführen', 'setup')
     .addToUi();
 }
@@ -69,8 +70,11 @@ function setup() {
   var ordner = ensureRootFolder_();
   props.setProperty('ROOT_FOLDER_ID', ordner.getId());
 
+  richteErinnerungEin_();
+
   var meldung = 'DocScan ist eingerichtet.\n\nDrive-Ordner: ' + ordner.getUrl() +
     (verschoben ? '\n\n' + verschoben + ' Zeile(n) wurden nach oben verschoben.' : '') +
+    '\n\nTägliche Erinnerungs-Mail um ' + ERINNERUNG_STUNDE + ' Uhr ist eingerichtet.' +
     '\n\nNächste Schritte: als Web-App bereitstellen und über „DocScan → Nutzer anlegen“ Zugänge erzeugen.';
   zeigeMeldung_(meldung);
   return meldung;
