@@ -6,7 +6,7 @@ Dokumente mit dem Handy scannen, im eigenen Google Drive ablegen und Rechnungen 
 - **Backend:** Google Apps Script unter deinem Google-Konto.
 - **Daten:** ein Google Sheet (Nutzer, Dokumente, Log, Regeln) und ein Ordner `DocScan` in deinem Google Drive.
 
-> **Stand: Meilenstein 1 (Fundament).** Einrichtung, Nutzerverwaltung, Anmeldung und die Startseite je nach Rolle funktionieren. Scannen, Texterkennung und die Tracking-Liste folgen in den nächsten Meilensteinen.
+> **Stand: Meilenstein 2 (Scannen & Upload).** Einrichtung, Nutzerverwaltung, Anmeldung, Startseite je nach Rolle sowie Scannen mehrerer Seiten, PDF-Erstellung und Ablage im Google Drive funktionieren. Texterkennung/Kategorisierung und die Tracking-Liste folgen in den nächsten Meilensteinen.
 
 ---
 
@@ -102,6 +102,36 @@ Android (Chrome): Menü **⋮ → App installieren** bzw. **Zum Startbildschirm 
 
 ---
 
+## Update einspielen (nach jedem neuen Meilenstein)
+
+Die App selbst (GitHub Pages) aktualisiert sich automatisch. Das Apps Script muss von Hand aktualisiert werden – am Computer:
+
+1. Sheet öffnen → **Erweiterungen → Apps Script**.
+2. Für jede geänderte Datei den Inhalt komplett durch die aktuelle Version ersetzen (Links unten). Neue Dateien wie in Schritt 2 der Einrichtung anlegen.
+3. **Speichern**.
+4. **Bereitstellen → Bereitstellungen verwalten → Bearbeiten (Stift) → Version: „Neue Version“ → Bereitstellen.**
+   Wichtig: *nicht* „Neue Bereitstellung“, sonst ändert sich die URL.
+
+**Meilenstein 2 ändert:** [`Code.gs`](https://raw.githubusercontent.com/jcd50827/Docscan/main/apps-script/Code.gs) und [`Documents.gs`](https://raw.githubusercontent.com/jcd50827/Docscan/main/apps-script/Documents.gs).
+
+Auf dem iPhone die App danach einmal schließen und neu öffnen, damit die neue Version geladen wird.
+
+---
+
+## Test-Checkliste Meilenstein 2 (auf dem iPhone)
+
+- [ ] Startseite → **Scannen** öffnet direkt die Kamera.
+- [ ] Nach dem Foto: Seitenübersicht mit Vorschaubild und Seitennummer.
+- [ ] **+ Seite aufnehmen** fügt weitere Seiten hinzu; **Aus Fotos wählen** übernimmt Bilder aus der Mediathek (auch mehrere).
+- [ ] Vorschaubild antippen → Seite neu aufnehmen (ersetzt sie); **×** löscht eine Seite.
+- [ ] Filter „Dokument“ an/aus → Vorschaubilder wechseln zwischen Graustufen und Farbe.
+- [ ] **Hochladen** → Fortschritt („Seite 1 von 2 …“, „Wird hochgeladen …“) → „Hochgeladen“ mit Titel und Seitenzahl.
+- [ ] Im Drive liegt die PDF unter `DocScan/<Jahr>/Sonstiges/` mit Namen `JJJJ-MM-TT_<Titel>_Sonstiges.pdf`, alle Seiten in der richtigen Reihenfolge, gut lesbar.
+- [ ] Im Sheet steht eine neue Zeile im Tab **Dokumente** und ein Eintrag „upload“ im Tab **Log**.
+- [ ] Contributor: der Upload erscheint auf der Startseite unter „Meine Uploads“.
+- [ ] Editor: Button **PDF in Drive öffnen** auf der Ergebnis-Karte funktioniert.
+- [ ] Flugmodus an → Hochladen → Hinweis „Keine Verbindung …“, Seiten bleiben erhalten; Flugmodus aus → erneut **Hochladen** klappt.
+
 ## Test-Checkliste Meilenstein 1 (auf dem iPhone)
 
 - [ ] App lässt sich zum Home-Bildschirm hinzufügen, startet ohne Safari-Leiste, Icon ist sichtbar.
@@ -123,11 +153,12 @@ Android (Chrome): Menü **⋮ → App installieren** bzw. **Zum Startbildschirm 
 ```
 pwa/                 statische PWA (kein Build-Schritt), wird auf GitHub Pages veröffentlicht
   index.html, app.js (UI/Routing), api.js (Apps-Script-Aufrufe), styles.css,
-  sw.js (Service Worker), manifest.webmanifest, config.js, icons/
+  scanner.js (Bildverarbeitung, PDF mit jsPDF), sw.js (Service Worker),
+  manifest.webmanifest, config.js, icons/
 apps-script/         Google Apps Script (V8)
   Code.gs            doGet/doPost, Routing, Sheet-Hilfsfunktionen
   Auth.gs            Zugangscodes (SHA-256), Rollen, Brute-Force-Schutz
-  Documents.gs       Dokumente lesen (listMine, stats)
+  Documents.gs       Upload & Drive-Ablage, Dokumente lesen (listMine, stats)
   Setup.gs           setup(), Menü, „Nutzer anlegen“
   appsscript.json    Manifest inkl. Drive API v3
 .github/workflows/pages.yml   Deployment von pwa/ auf GitHub Pages
@@ -135,13 +166,14 @@ apps-script/         Google Apps Script (V8)
 
 Die vollständige Spezifikation steht in [`CLAUDE.md`](CLAUDE.md).
 
-### API (Stand Meilenstein 1)
+### API (Stand Meilenstein 2)
 
 Alle Requests: `POST` an die Web-App-URL, `Content-Type: text/plain;charset=utf-8`, Body `{ action, code, ...payload }`.
 
 | action | Rolle | Antwort |
 |---|---|---|
 | `login` | alle | `{ ok, name, rolle }` |
+| `upload` | alle | Payload `{ pdfBase64, seiten, titelVorschlag? }` → `{ ok, dokument }`; Ablage unter `DocScan/<Jahr>/<Kategorie>/` (bis Meilenstein 3 immer `Sonstiges`) |
 | `listMine` | alle | `{ ok, dokumente: [...] }` (eigene Uploads, 7 Tage) |
 | `stats` | editor | `{ ok, summeOffen, anzahlOffen, anzahlUeberfaellig, naechsteFaelligkeiten }` |
 
