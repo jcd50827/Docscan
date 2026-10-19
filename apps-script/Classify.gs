@@ -258,23 +258,67 @@ function extrahiereRechnungsnr_(text) {
 
 var FIRMEN_MERKMAL = /\b(gmbh|ag|kg|ohg|ug|mbh|gbr|se|kgaa|stadtwerke|versicherung|versicherungen|sparkasse|bank|volksbank|finanzamt|krankenkasse|aok|barmer|telekom|vodafone|stadt|gemeinde|landkreis|landratsamt|bürgeramt|rundfunk|beitragsservice)\b|e\.\s?v\./i;
 
+// Rechtsformen – damit wird zusätzlich die Fußzeile durchsucht („Muster GmbH | Sitz: …“).
+var RECHTSFORM = /\b(gmbh|ag|kg|ohg|ug|mbh|gbr|se|kgaa)\b|e\.\s?v\./i;
+// Zeilen, die nie Absender sind (Anrede, Empfänger, Dokumenttyp, Seitenzahl …).
+var KEIN_ABSENDER = /^(herrn?\b|frau\b|familie\b|an\s|sehr geehrte|rechnung|mahnung|zahlungserinnerung|seite\b|datum|kunden|vertrag|bescheid|betreff|ihr\b|ihre\b|unser|page\b)/i;
+
 /**
- * Erste Zeile mit Firmenmerkmal (GmbH, AG, e.V., Stadtwerke …) in den ersten
- * 25 Zeilen, sonst die erste nicht-leere Zeile. Absenderzeilen über dem
- * Adressfeld („Firma GmbH · Straße 1 · 12345 Ort“) werden auf den Firmenteil gekürzt.
+ * Absender: erste Zeile mit Firmenmerkmal (GmbH, AG, e.V., Stadtwerke …) in den
+ * ersten 25 Zeilen; sonst eine Rechtsform irgendwo im Text (z. B. Fußzeile);
+ * sonst die erste sinnvolle Zeile. Absenderzeilen über dem Adressfeld
+ * („Firma GmbH · Straße 1 · 12345 Ort“) werden auf den Firmenteil gekürzt.
+ * Zeilen, die nicht nach lateinischem Text aussehen (z. B. als Text gelesene
+ * Logos), werden übersprungen.
  */
 function extrahiereAbsender_(text) {
   var zeilen = String(text || '').split(/\r?\n/)
     .map(function (z) { return z.replace(/\s+/g, ' ').trim(); })
-    .filter(function (z) { return z.length >= 2; });
-  for (var i = 0; i < Math.min(zeilen.length, 25); i++) {
-    if (!FIRMEN_MERKMAL.test(zeilen[i])) continue;
-    var teile = zeilen[i].split(/\s+[·•|–-]\s+|,\s*/);
-    for (var j = 0; j < teile.length; j++) {
-      if (FIRMEN_MERKMAL.test(teile[j])) return absenderKuerzen_(teile[j]);
+    .filter(lesbareZeile_);
+
+  var mitMerkmal = function (liste, merkmal) {
+    for (var i = 0; i < liste.length; i++) {
+      if (!merkmal.test(liste[i])) continue;
+      var teile = liste[i].split(/\s+[·•|–-]\s+|\s*\|\s*|,\s*/);
+      for (var j = 0; j < teile.length; j++) {
+        if (merkmal.test(teile[j]) && lesbareZeile_(teile[j])) return absenderKuerzen_(teile[j]);
+      }
+    }
+    return '';
+  };
+  var treffer = mitMerkmal(zeilen.slice(0, 25), FIRMEN_MERKMAL) || mitMerkmal(zeilen, RECHTSFORM);
+  if (treffer) return treffer;
+
+  // Absenderzeile über dem Adressfeld: „Name · Straße 1 · 12345 Ort“
+  for (var a = 0; a < zeilen.length; a++) {
+    var teil = zeilen[a].split(/\s+[·•|]\s+|\s*\|\s*/);
+    if (teil.length >= 2 && /\b\d{5}\b/.test(zeilen[a]) && lesbareZeile_(teil[0]) && !ADRESSE.test(teil[0])) {
+      return absenderKuerzen_(teil[0]);
     }
   }
-  return zeilen.length ? absenderKuerzen_(zeilen[0]) : '';
+  // Sonst die erste sinnvolle Zeile – ohne Anrede, Empfängernamen und Adresszeilen.
+  for (var k = 0; k < Math.min(zeilen.length, 25); k++) {
+    if (/^(herrn?|frau|familie)\b/i.test(zeilen[k])) { k++; continue; }
+    if (!KEIN_ABSENDER.test(zeilen[k]) && !ADRESSE.test(zeilen[k]) && !/€|\d,\d{2}\b/.test(zeilen[k])) {
+      return absenderKuerzen_(zeilen[k]);
+    }
+  }
+  return '';
+}
+
+// Adresszeilen: Postleitzahl oder Straße mit Hausnummer.
+var ADRESSE = /\b\d{5}\b|(str\.|straße|strasse|weg|platz|allee|gasse|ring|damm|ufer)\s*\d/i;
+
+/**
+ * Sieht die Zeile nach echtem Text aus? Nur lateinische Schrift (inkl. Umlauten),
+ * mindestens 3 Buchstaben und überwiegend Buchstaben statt Sonderzeichen.
+ */
+function lesbareZeile_(z) {
+  z = String(z || '');
+  if (/[^\u0000-ɏḀ-ỿ -⁯€]/.test(z)) return false;
+  var buchstaben = (z.match(/[A-Za-zÀ-ÖØ-öø-ÿ]/g) || []).length;
+  var zeichen = z.replace(/\s/g, '').length;
+  return buchstaben >= 3 && buchstaben / zeichen >= 0.5;
 }
 
 function absenderKuerzen_(s) {
@@ -347,6 +391,17 @@ function testClassify() {
       name: 'Info',
       text: 'Gemeinde Beispielhausen\nMitteilung an alle Haushalte\nHinweis zur Müllabfuhr im August\nInformation: neue Abholtermine.',
       erwartet: { kategorie: 'Info' }
+    },
+    {
+      name: 'Logo als Zeichensalat',
+      text: 'թեըրբաւ ձա նռավր\n|||  ~~ ##\nHerrn Max Muster\nMusterweg 1\nRechnung\nRechnungsnummer 2023002416\n' +
+        'Gesamtbetrag 502,83 €\nUSt 19 %\nMalermeister Krause · Bahnhofstr. 5 · 12345 Musterstadt',
+      erwartet: { kategorie: 'Rechnung', absender: 'Malermeister Krause', betrag: 502.83 }
+    },
+    {
+      name: 'Firma nur in der Fußzeile',
+      text: 'Herrn Max Muster\nRechnung Nr. 55\nzu zahlen 12,00 €\nMwSt\nSonnenschein Solar GmbH | Sitz: Kiel | HRB 1234',
+      erwartet: { kategorie: 'Rechnung', absender: 'Sonnenschein Solar GmbH' }
     },
     {
       name: 'Sonstiges',
