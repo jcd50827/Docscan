@@ -51,6 +51,7 @@
     ApiError,
     isConfigured,
     login: (code) => call('login', code),
+    upload: (code, payload) => call('upload', code, payload),
     listMine: (code) => call('listMine', code),
     stats: (code) => call('stats', code)
   };

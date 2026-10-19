@@ -224,3 +224,89 @@ code { font-size: 0.9em; }
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
   z-index: 20;
 }
+
+/* ---- Scannen ---- */
+.btn-ghost { background: transparent; color: var(--primary); }
+label.btn, label.btn-scan { cursor: pointer; -webkit-user-select: none; user-select: none; }
+
+.pages {
+  list-style: none;
+  margin: 16px 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.pages .empty { grid-column: 1 / -1; }
+.page { position: relative; }
+.page-thumb {
+  display: flex; align-items: center; justify-content: center;
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  overflow: hidden;
+  cursor: pointer;
+}
+.page-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.page-error { color: var(--danger); font-size: 0.85rem; }
+.page-nr {
+  position: absolute; left: 6px; bottom: 6px;
+  min-width: 24px; height: 24px; padding: 0 6px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.6); color: #fff;
+  font-size: 0.8rem; font-weight: 600;
+  display: flex; align-items: center; justify-content: center;
+  pointer-events: none;
+}
+.page-del {
+  position: absolute; top: -8px; right: -8px;
+  width: 36px; height: 36px;
+  border: 0; border-radius: 50%;
+  background: var(--danger); color: #fff;
+  font-size: 1.3rem; line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+.scan-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.scan-actions .btn { padding: 0 8px; white-space: nowrap; }
+
+.toggle {
+  display: flex; align-items: flex-start; gap: 12px;
+  margin: 20px 0 8px;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.toggle input { width: 22px; height: 22px; margin: 2px 0 0; flex-shrink: 0; accent-color: var(--primary); }
+.toggle .muted { font-size: 0.85rem; }
+
+.field-label { display: block; margin: 16px 0 6px; font-weight: 600; }
+
+.scan-status { min-height: 1.4em; margin: 12px 0 0; text-align: center; color: var(--muted); }
+.scan-status-error { color: var(--danger); }
+
+.spinner {
+  width: 24px; height: 24px;
+  border: 3px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---- Ergebnis nach Upload ---- */
+.result { text-align: center; padding-top: 16px; }
+.result-icon {
+  width: 64px; height: 64px; margin: 0 auto;
+  border-radius: 50%;
+  background: var(--primary); color: var(--primary-text);
+  font-size: 2rem; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+}
+.result-card { margin: 16px 0; text-align: left; }

@@ -107,6 +107,7 @@
   const routes = {
     '#/login': renderLogin,
     '#/': renderHome,
+    '#/scan': renderScan,
     '#/liste': renderListe
   };
 
@@ -197,16 +198,18 @@
       <section class="greeting">
         <p class="muted">Hallo ${esc(n.name)}</p>
       </section>
-      <button type="button" class="btn-scan" id="scan-btn">
-        <svg viewBox="0 0 24 24" width="36" height="36" aria-hidden="true"><path d="M4 7V5a1 1 0 0 1 1-1h2M17 4h2a1 1 0 0 1 1 1v2M20 17v2a1 1 0 0 1-1 1h-2M7 20H5a1 1 0 0 1-1-1v-2M7 12h10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <label class="btn-scan" for="home-cam">
+        ${SCAN_ICON}
         <span>Scannen</span>
-      </button>
+      </label>
+      <input type="file" id="home-cam" accept="image/*" capture="environment" hidden>
       <section id="home-content" class="home-content">
         <p class="muted">Wird geladen …</p>
       </section>`;
 
-    $('#scan-btn').addEventListener('click', () => {
-      toast('Die Scan-Funktion folgt im nächsten Update.');
+    $('#home-cam').addEventListener('change', (ev) => {
+      seitenHinzufuegen(ev.target.files);
+      location.hash = '#/scan';
     });
 
     if (isEditor()) loadEditorOverview(token);
@@ -285,6 +288,192 @@
         </div>
         <div class="card-side"><strong>${esc(fmtEuro(d.betrag))}</strong></div>
       </li>`;
+  }
+
+  // -------------------------------------------------------------------------
+  // Ansicht: Scannen
+  // -------------------------------------------------------------------------
+  const SCAN_ICON = '<svg viewBox="0 0 24 24" width="36" height="36" aria-hidden="true"><path d="M4 7V5a1 1 0 0 1 1-1h2M17 4h2a1 1 0 0 1 1 1v2M20 17v2a1 1 0 0 1-1 1h-2M7 20H5a1 1 0 0 1-1-1v-2M7 12h10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+
+  // Bleibt im Speicher, solange die App offen ist (Offline-Warteschlange folgt in Meilenstein 5).
+  const scan = {
+    seiten: [],       // { id, file, thumb }
+    filter: true,
+    titel: '',
+    laeuft: false,
+    ergebnis: null,   // Antwort des Uploads
+    ersetzeIndex: -1
+  };
+  let seitenId = 0;
+
+  function seitenHinzufuegen(dateien, ersetzeIndex = -1) {
+    const neu = Array.from(dateien || []).filter((f) => f.type.startsWith('image/') || !f.type);
+    if (!neu.length) return;
+    scan.ergebnis = null;
+    neu.forEach((file, i) => {
+      const seite = { id: ++seitenId, file, thumb: null };
+      if (ersetzeIndex >= 0 && i === 0) scan.seiten[ersetzeIndex] = seite;
+      else scan.seiten.push(seite);
+      erzeugeThumb(seite);
+    });
+  }
+
+  async function erzeugeThumb(seite) {
+    try {
+      const t = await Scanner.verarbeiteSeite(seite.file, { filter: scan.filter, skala: 0.2, qualitaet: 0.6 });
+      seite.thumb = t.dataUrl;
+    } catch (err) {
+      seite.thumb = '';
+      seite.fehler = err.message;
+    }
+    const img = document.querySelector(`[data-seite="${seite.id}"] img`);
+    if (img) img.src = seite.thumb;
+    else if (location.hash === '#/scan') renderSeiten();
+  }
+
+  function renderScan() {
+    if (scan.ergebnis) return renderErgebnis();
+    $('#app').innerHTML = `
+      <h1>Scannen</h1>
+      <p class="muted">Seiten nacheinander aufnehmen. Eine Seite antippen, um sie neu aufzunehmen.</p>
+      <ol class="pages" id="pages"></ol>
+      <div class="scan-actions">
+        <label class="btn btn-secondary" for="cam-input">+ Seite aufnehmen</label>
+        <label class="btn btn-ghost" for="lib-input">Aus Fotos wählen</label>
+      </div>
+      <input type="file" id="cam-input" accept="image/*" capture="environment" hidden>
+      <input type="file" id="lib-input" accept="image/*" multiple hidden>
+      <input type="file" id="replace-input" accept="image/*" capture="environment" hidden>
+
+      <label class="toggle">
+        <input type="checkbox" id="filter-toggle" ${scan.filter ? 'checked' : ''}>
+        <span><strong>Filter „Dokument“</strong><br><span class="muted">Graustufen und mehr Kontrast – kleinere Datei, bessere Texterkennung</span></span>
+      </label>
+
+      <label for="titel-input" class="field-label">Titel (optional)</label>
+      <input id="titel-input" class="input" type="text" maxlength="100"
+             placeholder="z. B. Stadtwerke – Strom Oktober" value="${esc(scan.titel)}">
+
+      <button type="button" class="btn btn-primary btn-block" id="upload-btn"></button>
+      <p class="scan-status" id="scan-status" role="status"></p>
+      <button type="button" class="btn btn-ghost btn-block" id="cancel-btn">Abbrechen</button>`;
+
+    $('#cam-input').addEventListener('change', (ev) => { seitenHinzufuegen(ev.target.files); ev.target.value = ''; renderSeiten(); });
+    $('#lib-input').addEventListener('change', (ev) => { seitenHinzufuegen(ev.target.files); ev.target.value = ''; renderSeiten(); });
+    $('#replace-input').addEventListener('change', (ev) => {
+      seitenHinzufuegen(ev.target.files, scan.ersetzeIndex);
+      ev.target.value = '';
+      renderSeiten();
+    });
+    $('#filter-toggle').addEventListener('change', (ev) => {
+      scan.filter = ev.target.checked;
+      scan.seiten.forEach((s) => { s.thumb = null; erzeugeThumb(s); });
+      renderSeiten();
+    });
+    $('#titel-input').addEventListener('input', (ev) => { scan.titel = ev.target.value; });
+    $('#pages').addEventListener('click', (ev) => {
+      if (scan.laeuft) return;
+      const del = ev.target.closest('[data-del]');
+      const rep = ev.target.closest('[data-replace]');
+      if (del) {
+        scan.seiten.splice(Number(del.dataset.del), 1);
+        renderSeiten();
+      } else if (rep) {
+        scan.ersetzeIndex = Number(rep.dataset.replace);
+        $('#replace-input').click();
+      }
+    });
+    $('#upload-btn').addEventListener('click', hochladen);
+    $('#cancel-btn').addEventListener('click', () => {
+      if (scan.laeuft) return;
+      if (scan.seiten.length && !confirm('Aufgenommene Seiten verwerfen?')) return;
+      scan.seiten = [];
+      scan.titel = '';
+      location.hash = '#/';
+    });
+    renderSeiten();
+  }
+
+  function renderSeiten() {
+    const liste = $('#pages');
+    if (!liste) return;
+    liste.innerHTML = scan.seiten.length
+      ? scan.seiten.map((s, i) => `
+          <li class="page" data-seite="${s.id}">
+            <button type="button" class="page-thumb" data-replace="${i}" aria-label="Seite ${i + 1} neu aufnehmen">
+              ${s.thumb ? `<img src="${s.thumb}" alt="">` : s.thumb === '' ? '<span class="page-error">Fehler</span>' : '<span class="spinner" aria-hidden="true"></span>'}
+            </button>
+            <span class="page-nr">${i + 1}</span>
+            <button type="button" class="page-del" data-del="${i}" aria-label="Seite ${i + 1} löschen">×</button>
+          </li>`).join('')
+      : '<li class="empty">Noch keine Seite aufgenommen.</li>';
+    const btn = $('#upload-btn');
+    const n = scan.seiten.length;
+    btn.disabled = scan.laeuft || n === 0;
+    btn.textContent = scan.laeuft ? 'Bitte warten …' : n ? `Hochladen (${n} ${n === 1 ? 'Seite' : 'Seiten'})` : 'Hochladen';
+  }
+
+  function setScanStatus(text, fehler = false) {
+    const el = $('#scan-status');
+    if (!el) return;
+    el.textContent = text;
+    el.classList.toggle('scan-status-error', fehler);
+  }
+
+  async function hochladen() {
+    if (scan.laeuft || !scan.seiten.length) return;
+    scan.laeuft = true;
+    renderSeiten();
+    setScanStatus('');
+    try {
+      const pdf = await Scanner.erstelleDokument(scan.seiten.map((s) => s.file), {
+        filter: scan.filter,
+        onFortschritt: (t) => setScanStatus(t)
+      });
+      setScanStatus(`Wird hochgeladen (${(pdf.bytes / 1024 / 1024).toLocaleString('de-DE', { maximumFractionDigits: 1 })} MB) …`);
+      const res = await Api.upload(state.code, {
+        pdfBase64: pdf.base64,
+        seiten: scan.seiten.length,
+        titelVorschlag: scan.titel.trim() || undefined
+      });
+      scan.ergebnis = { ...res.dokument, seiten: scan.seiten.length };
+      scan.seiten = [];
+      scan.titel = '';
+      scan.laeuft = false;
+      if (location.hash === '#/scan') renderScan();
+    } catch (err) {
+      scan.laeuft = false;
+      if (err.auth) return logout(err.message);
+      renderSeiten();
+      setScanStatus(err.offline
+        ? 'Keine Verbindung. Die Seiten bleiben erhalten – bitte später erneut auf „Hochladen“ tippen.'
+        : err.message, true);
+    }
+  }
+
+  function renderErgebnis() {
+    const d = scan.ergebnis;
+    $('#app').innerHTML = `
+      <section class="result">
+        <div class="result-icon" aria-hidden="true">✓</div>
+        <h1>Hochgeladen</h1>
+        <div class="card result-card">
+          <div class="card-main">
+            <strong class="card-title">${esc(d.titel)}</strong>
+            <span class="muted">${d.seiten} ${d.seiten === 1 ? 'Seite' : 'Seiten'} · ${esc(fmtDatum(d.erstellt_am))}</span>
+          </div>
+          <div class="card-side"><span class="badge">${esc(d.kategorie)}</span></div>
+        </div>
+        <p class="muted">Das PDF liegt im Google Drive. Die automatische Erkennung von Kategorie, Betrag und Fälligkeit folgt im nächsten Update.</p>
+        ${isEditor() && d.drive_url ? `<a href="${esc(d.drive_url)}" target="_blank" rel="noopener" class="btn btn-secondary btn-block">PDF in Drive öffnen</a>` : ''}
+        <label class="btn btn-primary btn-block" for="cam-again">Weiteres Dokument scannen</label>
+        <input type="file" id="cam-again" accept="image/*" capture="environment" hidden>
+        <a href="#/" class="btn btn-ghost btn-block">Zur Startseite</a>
+      </section>`;
+    $('#cam-again').addEventListener('change', (ev) => {
+      seitenHinzufuegen(ev.target.files);
+      renderScan();
+    });
   }
 
   // -------------------------------------------------------------------------
