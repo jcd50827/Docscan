@@ -156,23 +156,29 @@ function ibanGueltig_(iban) {
 }
 
 /**
- * Betrag nahe „Gesamtbetrag|Rechnungsbetrag|zu zahlen|Summe|Endbetrag“
- * (gleiche oder nächste Zeile). Sonst der größte Betrag mit €/EUR. Sonst null.
+ * Betrag nahe „Gesamtbetrag|Rechnungsbetrag|zu zahlen|Endsumme|Summe …“ (gleiche
+ * oder nächste Zeile). Gibt es mehrere Treffer, gewinnt der größte – die Endsumme
+ * ist größer als Netto, Steuer, Zwischensummen oder Überträge von Seite 1.
+ * Sonst der größte Betrag mit €/EUR. Sonst null.
  */
 function extrahiereBetrag_(text) {
   var zeilen = String(text || '').split(/\r?\n/);
-  var stark = /(gesamtbetrag|rechnungsbetrag|zu zahlen|zahlbetrag|endbetrag|gesamtsumme|offener betrag|forderungsbetrag)/i;
+  var stark = /(gesamtbetrag|rechnungsbetrag|rechnungssumme|zu zahlen|zahlbetrag|endbetrag|endsumme|gesamtsumme|gesamtpreis|bruttobetrag|summe\s*brutto|brutto\s*gesamt|gesamt\s*brutto|offener betrag|forderungsbetrag|gesamt\b)/i;
   var schwach = /summe/i;
+  var nie = /zwischensumme|übertrag|uebertrag/i;
+  // Bei bloßen „Summe“-Zeilen auch Netto/Steuer/Rabatt ignorieren (außer „brutto“/„inkl.“).
+  var nurTeil = /netto|mwst|\bust\b|umsatzsteuer|steuer|rabatt|skonto/i;
   var treffer = { 2: null, 1: null };
 
   zeilen.forEach(function (zeile, i) {
-    var stufe = stark.test(zeile) ? 2 : (schwach.test(zeile) && !/zwischensumme/i.test(zeile) ? 1 : 0);
-    if (!stufe) return;
+    var stufe = stark.test(zeile) ? 2 : (schwach.test(zeile) ? 1 : 0);
+    if (!stufe || nie.test(zeile)) return;
+    if (stufe === 1 && nurTeil.test(zeile) && !/brutto|inkl/i.test(zeile)) return;
     var schluessel = (stufe === 2 ? stark : schwach).exec(zeile);
     var rest = zeile.substring(schluessel.index + schluessel[0].length);
     var betrag = ersterBetrag_(rest);
     if (betrag === null && i + 1 < zeilen.length) betrag = ersterBetrag_(zeilen[i + 1]);
-    if (betrag !== null) treffer[stufe] = betrag; // letzter Treffer gewinnt
+    if (betrag !== null && (treffer[stufe] === null || betrag > treffer[stufe])) treffer[stufe] = betrag;
   });
   if (treffer[2] !== null) return treffer[2];
   if (treffer[1] !== null) return treffer[1];
@@ -402,6 +408,23 @@ function testClassify() {
       name: 'Firma nur in der Fußzeile',
       text: 'Herrn Max Muster\nRechnung Nr. 55\nzu zahlen 12,00 €\nMwSt\nSonnenschein Solar GmbH | Sitz: Kiel | HRB 1234',
       erwartet: { kategorie: 'Rechnung', absender: 'Sonnenschein Solar GmbH' }
+    },
+    {
+      name: 'Zwei Seiten, Endsumme auf Seite 2',
+      text: 'Josef Frings GmbH & Co. KG\nRechnung\nRechnungsnr. R2500079\nRechnungsdatum 16.01.2025\n' +
+        'Pos 1 Schrauben 12,40 €\nSumme Seite 1 20,71 €\nÜbertrag 20,71 €\n--- Seite 2 ---\nÜbertrag 20,71 €\n' +
+        'Pos 9 Montage 218,38 €\nSumme netto 239,09 €\nMwSt 19 % 45,43 €\nEndsumme 284,52 €',
+      erwartet: { kategorie: 'Rechnung', absender: 'Josef Frings GmbH & Co. KG', betrag: 284.52, faellig: '30.01.2025', geschaetzt: true }
+    },
+    {
+      name: 'Tabelle: Beträge in eigener Zeile',
+      text: 'Muster GmbH\nRechnung Nr. 77\nNettobetrag\n100,00 €\nUSt 19 %\n19,00 €\nGesamtbetrag\n119,00 €',
+      erwartet: { kategorie: 'Rechnung', betrag: 119 }
+    },
+    {
+      name: 'Gesamtbetrag inkl. MwSt.',
+      text: 'Muster GmbH\nRechnung Nr. 78\nNettobetrag 239,09 €\nGesamtbetrag inkl. MwSt. 284,52 €\nUSt-IdNr DE123',
+      erwartet: { kategorie: 'Rechnung', betrag: 284.52 }
     },
     {
       name: 'Sonstiges',

@@ -56,7 +56,15 @@ function testOcr() {
     return;
   }
   var text = ocrText_(neueste.getBlob());
-  Logger.log('Datei: ' + neueste.getName());
-  Logger.log('Erkannter Text (Anfang):\n' + text.substring(0, 1500));
+  Logger.log('Datei: ' + neueste.getName() + ' (' + text.length + ' Zeichen erkannt)');
+  // Kompletter Text in Stücken, weil das Protokoll lange Einträge abschneidet.
+  for (var i = 0; i < text.length; i += 1500) {
+    Logger.log('Erkannter Text (' + (i / 1500 + 1) + '):\n' + text.substring(i, i + 1500));
+  }
+  var zeilen = text.split(/\r?\n/);
+  var betragsZeilen = zeilen
+    .map(function (z, n) { return 'Zeile ' + (n + 1) + ': ' + z; })
+    .filter(function (z) { return new RegExp(BETRAG_MUSTER).test(z); });
+  Logger.log('Zeilen mit Beträgen:\n' + betragsZeilen.join('\n'));
   Logger.log('Auswertung: ' + JSON.stringify(analysiereText_(text, ladeRegeln_())));
 }
