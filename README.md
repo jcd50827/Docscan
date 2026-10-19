@@ -6,7 +6,7 @@ Dokumente mit dem Handy scannen, im eigenen Google Drive ablegen und Rechnungen 
 - **Backend:** Google Apps Script unter deinem Google-Konto.
 - **Daten:** ein Google Sheet (Nutzer, Dokumente, Log, Regeln) und ein Ordner `DocScan` in deinem Google Drive.
 
-> **Stand: Meilenstein 2 (Scannen & Upload).** Einrichtung, Nutzerverwaltung, Anmeldung, Startseite je nach Rolle sowie Scannen mehrerer Seiten, PDF-Erstellung und Ablage im Google Drive funktionieren. Texterkennung/Kategorisierung und die Tracking-Liste folgen in den nächsten Meilensteinen.
+> **Stand: Meilenstein 3 (Texterkennung & Kategorisierung).** Einrichtung, Nutzerverwaltung, Anmeldung, Scannen mehrerer Seiten und Ablage im Google Drive funktionieren. Gescannte Dokumente werden per Texterkennung ausgelesen, kategorisiert (Rechnung, Mahnung, Vertrag, Bescheid, Info, Sonstiges), mit Absender, Betrag, Fälligkeit, IBAN und Rechnungsnummer versehen, passend benannt und einsortiert. Editoren können die Erkennung direkt korrigieren. Die Tracking-Liste folgt in Meilenstein 4.
 
 ---
 
@@ -28,7 +28,7 @@ Du brauchst ein Google-Konto und ein GitHub-Konto (beides kostenlos). Programmie
    - Den Inhalt der Datei aus dem Repo komplett hineinkopieren.
    - Die vorhandene Datei `Code.gs` nicht neu anlegen, sondern ihren Inhalt ersetzen.
 
-   Aktuell sind das: `Code.gs`, `Auth.gs`, `Documents.gs`, `Setup.gs`.
+   Aktuell sind das: `Code.gs`, `Auth.gs`, `Documents.gs`, `Setup.gs`, `Ocr.gs`, `Classify.gs`.
 4. Manifest-Datei übernehmen:
    - Links auf das Zahnrad **Projekteinstellungen** klicken und **„appsscript.json“-Manifestdatei im Editor anzeigen** anhaken.
    - Zurück im Editor die Datei `appsscript.json` öffnen und ihren Inhalt durch den aus [`apps-script/appsscript.json`](apps-script/appsscript.json) ersetzen.
@@ -112,12 +112,32 @@ Die App selbst (GitHub Pages) aktualisiert sich automatisch. Das Apps Script mus
 4. **Bereitstellen → Bereitstellungen verwalten → Bearbeiten (Stift) → Version: „Neue Version“ → Bereitstellen.**
    Wichtig: *nicht* „Neue Bereitstellung“, sonst ändert sich die URL.
 
-**Meilenstein 2 ändert:** [`Code.gs`](https://raw.githubusercontent.com/jcd50827/Docscan/main/apps-script/Code.gs), [`Documents.gs`](https://raw.githubusercontent.com/jcd50827/Docscan/main/apps-script/Documents.gs) und [`Setup.gs`](https://raw.githubusercontent.com/jcd50827/Docscan/main/apps-script/Setup.gs).
-Danach einmal im Sheet **DocScan → Einrichtung ausführen** klicken: Zeilen, die durch einen Fehler in Meilenstein 1 unterhalb von Zeile 1000 gelandet sind (Tabs **Nutzer** und **Dokumente**), rücken dabei nach oben.
+**Meilenstein 3 ändert:** [`Code.gs`](https://raw.githubusercontent.com/jcd50827/Docscan/main/apps-script/Code.gs) und [`Documents.gs`](https://raw.githubusercontent.com/jcd50827/Docscan/main/apps-script/Documents.gs); **neu anlegen:** [`Classify.gs`](https://raw.githubusercontent.com/jcd50827/Docscan/main/apps-script/Classify.gs) und [`Ocr.gs`](https://raw.githubusercontent.com/jcd50827/Docscan/main/apps-script/Ocr.gs) (links **+ → Skript**, Name ohne `.gs`).
+
+**Einmalig nach Meilenstein 3 – neue Berechtigung erteilen:** Die Texterkennung braucht Zugriff auf Google Docs. Im Script-Editor oben die Funktion **`testOcr`** wählen → **Ausführen** → Berechtigungen wie bei der Einrichtung erlauben (**alle** Häkchen setzen). Im Ausführungsprotokoll erscheinen danach der erkannte Text deines letzten Scans und die Auswertung. Ohne diesen Schritt landet jeder Scan als „Sonstiges“.
+
+Zum Prüfen der Erkennungsregeln gibt es außerdem **`testClassify`**: Ausführen → im Protokoll sollte „Alle Fälle korrekt erkannt.“ stehen.
+
+(Meilenstein 2 hatte `Code.gs`, `Documents.gs` und `Setup.gs` geändert – danach einmal **DocScan → Einrichtung ausführen**.)
 
 Auf dem iPhone die App danach einmal schließen und neu öffnen, damit die neue Version geladen wird.
 
 ---
+
+## Test-Checkliste Meilenstein 3
+
+Am besten mit 3–4 echten Dokumenten: eine Rechnung, eine Mahnung oder Zahlungserinnerung, ein Vertrag/Bescheid und ein beliebiger Brief.
+
+- [ ] Nach dem Hochladen (dauert jetzt einige Sekunden länger) zeigt die Ergebnis-Karte „Erkannt als: Rechnung – <Absender> – <Betrag> – fällig <Datum>“.
+- [ ] Darunter stehen die erkannten Angaben (Absender, Betrag, Fällig am, Rechnungsnr., IBAN, Status). Ohne Fälligkeitsdatum auf der Rechnung steht „(geschätzt)“ hinter dem Datum (Rechnungsdatum + 14 Tage).
+- [ ] Im Drive liegt die PDF unter `DocScan/<Jahr>/<Kategorie>/` mit Namen `JJJJ-MM-TT_<Absender>_<Kategorie>_<Betrag>€.pdf`.
+- [ ] Im Sheet (Tab **Dokumente**) sind Kategorie, Absender, Betrag, Fälligkeit, IBAN, Rechnungsnr. und `ocr_text_kurz` gefüllt; Rechnung/Mahnung hat Status `offen`, alles andere `erledigt`.
+- [ ] Editor: **Angaben korrigieren** → z. B. Kategorie oder Betrag ändern → **Speichern** → Karte zeigt die neuen Werte; die PDF in Drive ist umbenannt und bei neuer Kategorie in den passenden Ordner verschoben.
+- [ ] Editor: falsche IBAN eingeben → Fehlermeldung „Die IBAN ist ungültig …“.
+- [ ] Contributor: sieht die Erkennung, aber keinen Button zum Korrigieren.
+- [ ] Dasselbe Dokument zweimal scannen → gelbe Warnung „Mögliches Duplikat von …“; im Sheet steht in `notiz` „Mögliches Duplikat von <id>“.
+- [ ] Startseite (Editor): „Summe offen“ und „Nächste 7 Tage“ zählen die erkannten Rechnungen.
+- [ ] Eigene Schlüsselwörter im Tab **Regeln** ergänzen (z. B. `Rechnung | abschlag | 2`) → beim nächsten Scan berücksichtigt.
 
 ## Test-Checkliste Meilenstein 2 (auf dem iPhone)
 
@@ -159,7 +179,9 @@ pwa/                 statische PWA (kein Build-Schritt), wird auf GitHub Pages v
 apps-script/         Google Apps Script (V8)
   Code.gs            doGet/doPost, Routing, Sheet-Hilfsfunktionen
   Auth.gs            Zugangscodes (SHA-256), Rollen, Brute-Force-Schutz
-  Documents.gs       Upload & Drive-Ablage, Dokumente lesen (listMine, stats)
+  Documents.gs       Upload & Drive-Ablage, Korrektur (update), Lesen (listMine, stats)
+  Ocr.gs             Texterkennung über Drive-Konvertierung (+ testOcr)
+  Classify.gs        Kategorisierung & Feldextraktion, regelbasiert (+ testClassify)
   Setup.gs           setup(), Menü, „Nutzer anlegen“
   appsscript.json    Manifest inkl. Drive API v3
 .github/workflows/pages.yml   Deployment von pwa/ auf GitHub Pages
@@ -167,14 +189,15 @@ apps-script/         Google Apps Script (V8)
 
 Die vollständige Spezifikation steht in [`CLAUDE.md`](CLAUDE.md).
 
-### API (Stand Meilenstein 2)
+### API (Stand Meilenstein 3)
 
 Alle Requests: `POST` an die Web-App-URL, `Content-Type: text/plain;charset=utf-8`, Body `{ action, code, ...payload }`.
 
 | action | Rolle | Antwort |
 |---|---|---|
 | `login` | alle | `{ ok, name, rolle }` |
-| `upload` | alle | Payload `{ pdfBase64, seiten, titelVorschlag? }` → `{ ok, dokument }`; Ablage unter `DocScan/<Jahr>/<Kategorie>/` (bis Meilenstein 3 immer `Sonstiges`) |
+| `upload` | alle | Payload `{ pdfBase64, seiten, titelVorschlag? }` → `{ ok, dokument }` inkl. erkannter Felder, `faelligGeschaetzt`, `textErkannt`, `duplikatVon` |
+| `update` | editor | Payload `{ id, felder: { kategorie, titel, absender, betrag, faellig_am (JJJJ-MM-TT), iban, rechnungsnr, notiz } }` → `{ ok, dokument }`; PDF wird umbenannt/verschoben |
 | `listMine` | alle | `{ ok, dokumente: [...] }` (eigene Uploads, 7 Tage) |
 | `stats` | editor | `{ ok, summeOffen, anzahlOffen, anzahlUeberfaellig, naechsteFaelligkeiten }` |
 
