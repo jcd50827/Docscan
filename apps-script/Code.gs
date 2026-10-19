@@ -147,14 +147,31 @@ function readTable_(sheet) {
   return zeilen;
 }
 
-/** Hängt eine Zeile an; obj wird anhand der Kopfzeile auf die Spalten verteilt. */
+/**
+ * Hängt eine Zeile an; obj wird anhand der Kopfzeile auf die Spalten verteilt.
+ * Bewusst nicht sheet.appendRow(): Das zählt leere Checkbox-Zellen als Inhalt
+ * und würde erst unterhalb von Zeile 1000 anhängen.
+ */
 function appendRow_(sheet, obj) {
   var kopf = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
   var zeile = kopf.map(function (h) {
     var key = String(h).trim();
     return Object.prototype.hasOwnProperty.call(obj, key) ? alsZellwert_(obj[key]) : '';
   });
-  sheet.appendRow(zeile);
+  var ziel = letzteDatenzeile_(sheet) + 1;
+  if (ziel > sheet.getMaxRows()) sheet.insertRowsAfter(sheet.getMaxRows(), ziel - sheet.getMaxRows());
+  sheet.getRange(ziel, 1, 1, zeile.length).setValues([zeile]);
+}
+
+/** Letzte Zeile mit Inhalt in Spalte A (1 = nur Kopfzeile). */
+function letzteDatenzeile_(sheet) {
+  var letzte = sheet.getLastRow();
+  if (letzte < 2) return 1;
+  var spalteA = sheet.getRange(1, 1, letzte, 1).getValues();
+  for (var i = spalteA.length - 1; i >= 1; i--) {
+    if (String(spalteA[i][0]) !== '') return i + 1;
+  }
+  return 1;
 }
 
 /** Text, der mit = + - @ beginnt, würde das Sheet als Formel ausführen → als Text markieren. */

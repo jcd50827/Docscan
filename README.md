@@ -112,7 +112,8 @@ Die App selbst (GitHub Pages) aktualisiert sich automatisch. Das Apps Script mus
 4. **Bereitstellen → Bereitstellungen verwalten → Bearbeiten (Stift) → Version: „Neue Version“ → Bereitstellen.**
    Wichtig: *nicht* „Neue Bereitstellung“, sonst ändert sich die URL.
 
-**Meilenstein 2 ändert:** [`Code.gs`](https://raw.githubusercontent.com/jcd50827/Docscan/main/apps-script/Code.gs) und [`Documents.gs`](https://raw.githubusercontent.com/jcd50827/Docscan/main/apps-script/Documents.gs).
+**Meilenstein 2 ändert:** [`Code.gs`](https://raw.githubusercontent.com/jcd50827/Docscan/main/apps-script/Code.gs), [`Documents.gs`](https://raw.githubusercontent.com/jcd50827/Docscan/main/apps-script/Documents.gs) und [`Setup.gs`](https://raw.githubusercontent.com/jcd50827/Docscan/main/apps-script/Setup.gs).
+Danach einmal im Sheet **DocScan → Einrichtung ausführen** klicken: Zeilen, die durch einen Fehler in Meilenstein 1 unterhalb von Zeile 1000 gelandet sind (Tabs **Nutzer** und **Dokumente**), rücken dabei nach oben.
 
 Auf dem iPhone die App danach einmal schließen und neu öffnen, damit die neue Version geladen wird.
 

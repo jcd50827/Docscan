@@ -52,6 +52,10 @@ function setup() {
   });
   formatSheets_(ss);
   removeDefaultSheet_(ss);
+  var verschoben = 0;
+  Object.keys(SCHEMA).forEach(function (name) {
+    verschoben += datenNachObenSchieben_(ss.getSheetByName(name));
+  });
 
   var regelSheet = ss.getSheetByName('Regeln');
   if (regelSheet.getLastRow() < 2) {
@@ -66,9 +70,33 @@ function setup() {
   props.setProperty('ROOT_FOLDER_ID', ordner.getId());
 
   var meldung = 'DocScan ist eingerichtet.\n\nDrive-Ordner: ' + ordner.getUrl() +
+    (verschoben ? '\n\n' + verschoben + ' Zeile(n) wurden nach oben verschoben.' : '') +
     '\n\nNächste Schritte: als Web-App bereitstellen und über „DocScan → Nutzer anlegen“ Zugänge erzeugen.';
   zeigeMeldung_(meldung);
   return meldung;
+}
+
+/**
+ * Repariert Tabs, in denen Zeilen durch einen früheren Fehler unterhalb
+ * leerer Zeilen (z. B. ab Zeile 1001) gelandet sind: Alle Datenzeilen
+ * (Spalte A gefüllt) rücken lückenlos ab Zeile 2 nach oben.
+ */
+function datenNachObenSchieben_(sheet) {
+  var letzte = sheet.getLastRow();
+  if (letzte < 2) return 0;
+  var bereich = sheet.getRange(2, 1, letzte - 1, sheet.getLastColumn());
+  var werte = bereich.getValues();
+  var daten = werte.filter(function (r) { return String(r[0]) !== ''; });
+  var schonKompakt = werte.slice(0, daten.length).every(function (r) { return String(r[0]) !== ''; });
+  if (!daten.length || schonKompakt) return 0;
+
+  var verschoben = werte.slice(daten.length).filter(function (r) { return String(r[0]) !== ''; }).length;
+  bereich.clearContent();
+  // Text wie „=…“ wieder als Text schützen, getValues() liefert ihn ohne Apostroph.
+  sheet.getRange(2, 1, daten.length, daten[0].length).setValues(daten.map(function (r) {
+    return r.map(alsZellwert_);
+  }));
+  return verschoben;
 }
 
 function ensureSheet_(ss, name, spalten) {
