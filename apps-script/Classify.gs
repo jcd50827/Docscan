@@ -156,42 +156,85 @@ function ibanGueltig_(iban) {
 }
 
 /**
- * Betrag nahe „Gesamtbetrag|Rechnungsbetrag|zu zahlen|Endsumme|Summe …“ (gleiche
- * oder nächste Zeile). Gibt es mehrere Treffer, gewinnt der größte – die Endsumme
- * ist größer als Netto, Steuer, Zwischensummen oder Überträge von Seite 1.
- * Sonst der größte Betrag mit €/EUR. Sonst null.
+ * Gesamtbetrag der Rechnung. Reihenfolge:
+ *  1. Betrag in derselben Zeile wie „Gesamtbetrag|Endsumme|zu zahlen …“
+ *  2. Rechenprobe: Netto + MwSt (19/7 %) = Brutto → Brutto. Hilft, wenn die
+ *     Texterkennung Tabellen spaltenweise liest (Beschriftungen und Beträge getrennt).
+ *  3. Betrag in der Zeile nach so einem Stichwort
+ *  4. Betrag nahe „Summe“
+ *  5. größter Betrag mit €/EUR
+ * Bei mehreren Treffern einer Stufe gewinnt der größte (Endsumme > Netto, Steuer,
+ * Zwischensummen). Sätze wie „… sind Lohnkosten von 20,71 € enthalten“ zählen nicht.
  */
 function extrahiereBetrag_(text) {
   var zeilen = String(text || '').split(/\r?\n/);
   var stark = /(gesamtbetrag|rechnungsbetrag|rechnungssumme|zu zahlen|zahlbetrag|endbetrag|endsumme|gesamtsumme|gesamtpreis|bruttobetrag|summe\s*brutto|brutto\s*gesamt|gesamt\s*brutto|offener betrag|forderungsbetrag|gesamt\b)/i;
   var schwach = /summe/i;
-  var nie = /zwischensumme|übertrag|uebertrag/i;
+  var nie = /zwischensumme|übertrag|uebertrag|enthalten|davon|lohnkosten|arbeitskosten|anteil|in höhe von/i;
   // Bei bloßen „Summe“-Zeilen auch Netto/Steuer/Rabatt ignorieren (außer „brutto“/„inkl.“).
   var nurTeil = /netto|mwst|\bust\b|umsatzsteuer|steuer|rabatt|skonto/i;
-  var treffer = { 2: null, 1: null };
+  var gleicheZeile = null;
+  var naechsteZeile = null;
+  var summe = null;
+  var max = function (a, b) { return a === null || b > a ? b : a; };
 
   zeilen.forEach(function (zeile, i) {
     var stufe = stark.test(zeile) ? 2 : (schwach.test(zeile) ? 1 : 0);
     if (!stufe || nie.test(zeile)) return;
     if (stufe === 1 && nurTeil.test(zeile) && !/brutto|inkl/i.test(zeile)) return;
     var schluessel = (stufe === 2 ? stark : schwach).exec(zeile);
-    var rest = zeile.substring(schluessel.index + schluessel[0].length);
-    var betrag = ersterBetrag_(rest);
-    if (betrag === null && i + 1 < zeilen.length) betrag = ersterBetrag_(zeilen[i + 1]);
-    if (betrag !== null && (treffer[stufe] === null || betrag > treffer[stufe])) treffer[stufe] = betrag;
+    var betrag = ersterBetrag_(zeile.substring(schluessel.index + schluessel[0].length));
+    var folgezeile = i + 1 < zeilen.length && !nie.test(zeilen[i + 1]) ? ersterBetrag_(zeilen[i + 1]) : null;
+    if (stufe === 2 && betrag !== null) gleicheZeile = max(gleicheZeile, betrag);
+    else if (stufe === 2 && folgezeile !== null) naechsteZeile = max(naechsteZeile, folgezeile);
+    else if (stufe === 1 && (betrag !== null || folgezeile !== null)) summe = max(summe, betrag !== null ? betrag : folgezeile);
   });
-  if (treffer[2] !== null) return treffer[2];
-  if (treffer[1] !== null) return treffer[1];
+  if (gleicheZeile !== null) return gleicheZeile;
+  var brutto = bruttoAusRechenprobe_(text);
+  if (brutto !== null) return brutto;
+  if (naechsteZeile !== null) return naechsteZeile;
+  if (summe !== null) return summe;
 
   // Fallback: größter Betrag mit Währungsangabe
   var mitWaehrung = new RegExp('(?:(?:€|EUR)\\s*(' + BETRAG_MUSTER + '))|(?:(' + BETRAG_MUSTER + ')\\s*(?:€|EUR))', 'g');
-  var max = null;
+  var groesster = null;
   var m;
   while ((m = mitWaehrung.exec(text))) {
     var wert = parseBetrag_(m[1] || m[2]);
-    if (wert !== null && (max === null || wert > max)) max = wert;
+    if (wert !== null) groesster = max(groesster, wert);
   }
-  return max;
+  return groesster;
+}
+
+/**
+ * Sucht Netto + Steuer = Brutto mit Steuer = 19 %, 7 % (oder 16/5 %) von Netto.
+ * Liefert das größte passende Brutto oder null.
+ */
+function bruttoAusRechenprobe_(text) {
+  var re = new RegExp(BETRAG_MUSTER, 'g');
+  var werte = [];
+  var m;
+  while ((m = re.exec(String(text || ''))) && werte.length < 300) {
+    var w = parseBetrag_(m[0]);
+    if (w !== null && w > 0 && werte.indexOf(w) < 0) werte.push(w);
+  }
+  var cent = function (x) { return Math.round(x * 100); };
+  var vorhanden = {};
+  werte.forEach(function (w) { vorhanden[cent(w)] = true; });
+  var bestes = null;
+  werte.forEach(function (netto) {
+    if (netto < 1) return;
+    [0.19, 0.07, 0.16, 0.05].forEach(function (satz) {
+      var steuer = Math.round(netto * satz * 100) / 100;
+      // Rundungsdifferenzen von 1 Cent zulassen
+      [-0.01, 0, 0.01].forEach(function (d) {
+        var st = Math.round((steuer + d) * 100) / 100;
+        var brutto = Math.round((netto + st) * 100) / 100;
+        if (vorhanden[cent(st)] && vorhanden[cent(brutto)] && (bestes === null || brutto > bestes)) bestes = brutto;
+      });
+    });
+  });
+  return bestes;
 }
 
 function ersterBetrag_(s) {
@@ -424,6 +467,13 @@ function testClassify() {
     {
       name: 'Gesamtbetrag inkl. MwSt.',
       text: 'Muster GmbH\nRechnung Nr. 78\nNettobetrag 239,09 €\nGesamtbetrag inkl. MwSt. 284,52 €\nUSt-IdNr DE123',
+      erwartet: { kategorie: 'Rechnung', betrag: 284.52 }
+    },
+    {
+      name: 'Tabelle spaltenweise gelesen (Josef Frings)',
+      text: 'Josef Frings GmbH & Co. KG\nRechnung\nRechnungsnr. R2500079\n1,00 ST\n1,00 Psch\n201,69\n201,69\n20,00\n20,00\n' +
+        '17,40\n17,40\n239,09\n239,09\nNettobetrag\nMwSt 19 %\nEndsumme\n239,09\n45,43\n284,52\n' +
+        'In dem Rechnungsbetrag sind Lohnkosten in Höhe von\n20,71 enthalten.',
       erwartet: { kategorie: 'Rechnung', betrag: 284.52 }
     },
     {
