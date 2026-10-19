@@ -57,6 +57,7 @@
     list: (code, filter) => call('list', code, { filter }),
     setStatus: (code, payload) => call('setStatus', code, payload),
     delete: (code, payload) => call('delete', code, payload),
+    exportCsv: (code, payload) => call('exportCsv', code, payload),
     stats: (code) => call('stats', code)
   };
 })();

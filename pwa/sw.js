@@ -4,7 +4,7 @@
 // - Requests an Apps Script (POST) werden nie angefasst.
 // Bei Änderungen an der Datei-Liste CACHE_VERSION erhöhen.
 
-const CACHE_VERSION = 'v4';
+const CACHE_VERSION = 'v5';
 const SHELL_CACHE = `docscan-shell-${CACHE_VERSION}`;
 const LIB_CACHE = 'docscan-libs-v1';
 
@@ -15,6 +15,7 @@ const SHELL_FILES = [
   'config.js',
   'api.js',
   'scanner.js',
+  'queue.js',
   'app.js',
   'manifest.webmanifest',
   'icons/icon-192.png',

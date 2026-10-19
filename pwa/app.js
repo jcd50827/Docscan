@@ -196,6 +196,7 @@
         const res = await Api.login(code);
         setSession(code, { name: res.name, rolle: res.rolle });
         location.hash = '#/';
+        warteschlangeSenden();
       } catch (err) {
         fehler.textContent = err.message;
         fehler.hidden = false;
@@ -224,9 +225,10 @@
       </section>`;
 
     $('#home-cam').addEventListener('change', (ev) => {
-      seitenHinzufuegen(ev.target.files);
+      seitenHinzufuegen(ev.target.files, { bearbeiten: true });
       location.hash = '#/scan';
     });
+    zeigeWarteschlange();
 
     if (isEditor()) loadEditorOverview(token);
     else loadMyUploads(token);
@@ -320,25 +322,45 @@
     titel: '',
     laeuft: false,
     ergebnis: null,   // Antwort des Uploads
-    ersetzeIndex: -1
+    ersetzeIndex: -1,
+    bearbeite: null   // id der Seite im Eckpunkt-Editor
   };
   let seitenId = 0;
 
-  function seitenHinzufuegen(dateien, ersetzeIndex = -1) {
+  /**
+   * Fügt Fotos als Seiten hinzu. Kamera-Fotos öffnen danach den Eckpunkt-Editor
+   * (bearbeiten = true); bei Fotos aus der Mediathek laufen Kanten still im Hintergrund.
+   */
+  function seitenHinzufuegen(dateien, { ersetzeIndex = -1, bearbeiten = false } = {}) {
     const neu = Array.from(dateien || []).filter((f) => f.type.startsWith('image/') || !f.type);
-    if (!neu.length) return;
+    if (!neu.length) return null;
     scan.ergebnis = null;
+    let letzte = null;
     neu.forEach((file, i) => {
-      const seite = { id: ++seitenId, file, thumb: null };
+      const seite = { id: ++seitenId, file, thumb: null, ecken: null, eckenGeprueft: false };
       if (ersetzeIndex >= 0 && i === 0) scan.seiten[ersetzeIndex] = seite;
       else scan.seiten.push(seite);
+      letzte = seite;
+      if (!bearbeiten) kantenImHintergrund(seite);
       erzeugeThumb(seite);
     });
+    if (bearbeiten && letzte) scan.bearbeite = letzte.id;
+    return letzte;
+  }
+
+  async function kantenImHintergrund(seite) {
+    const ecken = await Scanner.erkenneEcken(seite.file);
+    if (seite.eckenGeprueft) return; // inzwischen von Hand gesetzt
+    seite.eckenGeprueft = true;
+    if (ecken) {
+      seite.ecken = ecken;
+      erzeugeThumb(seite);
+    }
   }
 
   async function erzeugeThumb(seite) {
     try {
-      const t = await Scanner.verarbeiteSeite(seite.file, { filter: scan.filter, skala: 0.2, qualitaet: 0.6 });
+      const t = await Scanner.verarbeiteSeite(seite.file, { filter: scan.filter, skala: 0.2, qualitaet: 0.6, ecken: seite.ecken });
       seite.thumb = t.dataUrl;
     } catch (err) {
       seite.thumb = '';
@@ -351,9 +373,12 @@
 
   function renderScan() {
     if (scan.ergebnis) return renderErgebnis();
+    const inBearbeitung = scan.seiten.find((x) => x.id === scan.bearbeite);
+    if (inBearbeitung) return renderEckenEditor(inBearbeitung);
+    scan.bearbeite = null;
     $('#app').innerHTML = `
       <h1>Scannen</h1>
-      <p class="muted">Seiten nacheinander aufnehmen. Eine Seite antippen, um sie neu aufzunehmen.</p>
+      <p class="muted">Seiten nacheinander aufnehmen. Eine Seite antippen, um die Ecken anzupassen oder sie neu aufzunehmen.</p>
       <ol class="pages" id="pages"></ol>
       <div class="scan-actions">
         <label class="btn btn-secondary" for="cam-input">+ Seite aufnehmen</label>
@@ -361,7 +386,6 @@
       </div>
       <input type="file" id="cam-input" accept="image/*" capture="environment" hidden>
       <input type="file" id="lib-input" accept="image/*" multiple hidden>
-      <input type="file" id="replace-input" accept="image/*" capture="environment" hidden>
 
       <label class="toggle">
         <input type="checkbox" id="filter-toggle" ${scan.filter ? 'checked' : ''}>
@@ -376,13 +400,8 @@
       <p class="scan-status" id="scan-status" role="status"></p>
       <button type="button" class="btn btn-ghost btn-block" id="cancel-btn">Abbrechen</button>`;
 
-    $('#cam-input').addEventListener('change', (ev) => { seitenHinzufuegen(ev.target.files); ev.target.value = ''; renderSeiten(); });
+    $('#cam-input').addEventListener('change', (ev) => { seitenHinzufuegen(ev.target.files, { bearbeiten: true }); ev.target.value = ''; renderScan(); });
     $('#lib-input').addEventListener('change', (ev) => { seitenHinzufuegen(ev.target.files); ev.target.value = ''; renderSeiten(); });
-    $('#replace-input').addEventListener('change', (ev) => {
-      seitenHinzufuegen(ev.target.files, scan.ersetzeIndex);
-      ev.target.value = '';
-      renderSeiten();
-    });
     $('#filter-toggle').addEventListener('change', (ev) => {
       scan.filter = ev.target.checked;
       scan.seiten.forEach((s) => { s.thumb = null; erzeugeThumb(s); });
@@ -397,8 +416,8 @@
         scan.seiten.splice(Number(del.dataset.del), 1);
         renderSeiten();
       } else if (rep) {
-        scan.ersetzeIndex = Number(rep.dataset.replace);
-        $('#replace-input').click();
+        const seite = scan.seiten[Number(rep.dataset.replace)];
+        if (seite) { scan.bearbeite = seite.id; renderScan(); }
       }
     });
     $('#upload-btn').addEventListener('click', hochladen);
@@ -418,7 +437,7 @@
     liste.innerHTML = scan.seiten.length
       ? scan.seiten.map((s, i) => `
           <li class="page" data-seite="${s.id}">
-            <button type="button" class="page-thumb" data-replace="${i}" aria-label="Seite ${i + 1} neu aufnehmen">
+            <button type="button" class="page-thumb" data-replace="${i}" aria-label="Seite ${i + 1} bearbeiten">
               ${s.thumb ? `<img src="${s.thumb}" alt="">` : s.thumb === '' ? '<span class="page-error">Fehler</span>' : '<span class="spinner" aria-hidden="true"></span>'}
             </button>
             <span class="page-nr">${i + 1}</span>
@@ -444,16 +463,30 @@
     renderSeiten();
     setScanStatus('');
     try {
-      const pdf = await Scanner.erstelleDokument(scan.seiten.map((s) => s.file), {
+      const pdf = await Scanner.erstelleDokument(scan.seiten, {
         filter: scan.filter,
         onFortschritt: (t) => setScanStatus(t)
       });
-      setScanStatus(`Wird hochgeladen und ausgelesen (${(pdf.bytes / 1024 / 1024).toLocaleString('de-DE', { maximumFractionDigits: 1 })} MB) – das dauert einige Sekunden …`);
-      const res = await Api.upload(state.code, {
+      const payload = {
         pdfBase64: pdf.base64,
         seiten: scan.seiten.length,
         titelVorschlag: scan.titel.trim() || undefined
-      });
+      };
+      let res;
+      try {
+        if (navigator.onLine === false) throw new Api.ApiError('offline', { offline: true });
+        setScanStatus(`Wird hochgeladen und ausgelesen (${(pdf.bytes / 1024 / 1024).toLocaleString('de-DE', { maximumFractionDigits: 1 })} MB) – das dauert einige Sekunden …`);
+        res = await Api.upload(state.code, payload);
+      } catch (err) {
+        if (!err.offline) throw err;
+        // Kein Netz: in die Warteschlange, wird später automatisch gesendet.
+        try {
+          await Queue.add(payload);
+        } catch (e) {
+          throw new Api.ApiError('Keine Verbindung, und der Offline-Speicher ist nicht verfügbar. Die Seiten bleiben erhalten – bitte später erneut auf „Hochladen“ tippen.');
+        }
+        res = { dokument: { offline: true, titel: payload.titelVorschlag || 'Scan', erstellt_am: new Date().toISOString() } };
+      }
       scan.ergebnis = { ...res.dokument, seiten: scan.seiten.length };
       scan.seiten = [];
       scan.titel = '';
@@ -471,6 +504,7 @@
 
   function renderErgebnis() {
     const d = scan.ergebnis;
+    if (d.offline) return renderOfflineErgebnis(d);
     const kurz = [d.kategorie, d.absender, typeof d.betrag === 'number' ? fmtEuro(d.betrag) : '',
       d.faellig_am ? `fällig ${fmtDatumKurz(d.faellig_am)}` : ''].filter(Boolean).join(' – ');
     $('#app').innerHTML = `
@@ -497,7 +531,7 @@
         <a href="#/" class="btn btn-ghost btn-block">Zur Startseite</a>
       </section>`;
     $('#cam-again').addEventListener('change', (ev) => {
-      seitenHinzufuegen(ev.target.files);
+      seitenHinzufuegen(ev.target.files, { bearbeiten: true });
       renderScan();
     });
     if (isEditor()) {
@@ -507,6 +541,291 @@
         renderErgebnis();
         toast('Gespeichert.');
       });
+    }
+  }
+
+  function renderOfflineErgebnis(d) {
+    $('#app').innerHTML = `
+      <section class="result">
+        <div class="result-icon result-icon-wait" aria-hidden="true">⏳</div>
+        <h1>Offline gespeichert</h1>
+        <p class="muted">„${esc(d.titel)}“ (${d.seiten} ${d.seiten === 1 ? 'Seite' : 'Seiten'}) liegt auf diesem Gerät und wird automatisch hochgeladen, sobald wieder Internet da ist – spätestens beim nächsten Öffnen der App.</p>
+        <label class="btn btn-primary btn-block" for="cam-again">Weiteres Dokument scannen</label>
+        <input type="file" id="cam-again" accept="image/*" capture="environment" hidden>
+        <a href="#/" class="btn btn-ghost btn-block">Zur Startseite</a>
+      </section>`;
+    $('#cam-again').addEventListener('change', (ev) => {
+      seitenHinzufuegen(ev.target.files, { bearbeiten: true });
+      renderScan();
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // Eckpunkt-Editor (Kantenerkennung + manuelle Korrektur)
+  // -------------------------------------------------------------------------
+  const ECK_NAMEN = {
+    topLeftCorner: 'oben links', topRightCorner: 'oben rechts',
+    bottomRightCorner: 'unten rechts', bottomLeftCorner: 'unten links'
+  };
+
+  function renderEckenEditor(seite) {
+    const url = URL.createObjectURL(seite.file);
+    $('#app').innerHTML = `
+      <h1>Ecken anpassen</h1>
+      <p class="muted crop-status" id="crop-status" role="status"></p>
+      <div class="crop-area" id="crop-area">
+        <img id="crop-img" alt="Aufgenommene Seite" draggable="false">
+        <svg class="crop-svg" id="crop-svg" preserveAspectRatio="none" aria-hidden="true"><polygon id="crop-poly"></polygon></svg>
+        ${Object.keys(ECK_NAMEN).map((k) => `<div class="crop-handle" data-k="${k}" aria-label="Ecke ${ECK_NAMEN[k]}"></div>`).join('')}
+      </div>
+      <div class="scan-actions">
+        <button type="button" class="btn btn-ghost" id="crop-full">Ganzes Bild</button>
+        <label class="btn btn-secondary" for="crop-retake">Neu aufnehmen</label>
+      </div>
+      <input type="file" id="crop-retake" accept="image/*" capture="environment" hidden>
+      <button type="button" class="btn btn-primary btn-block" id="crop-ok">Übernehmen</button>
+      <button type="button" class="btn btn-ghost btn-block" id="crop-del">Seite verwerfen</button>`;
+
+    const img = $('#crop-img');
+    const status = (t) => { const el = $('#crop-status'); if (el) el.textContent = t; };
+    let ecken = null;
+    let breite = 0;
+    let hoehe = 0;
+    let vonHand = false;
+
+    const zeichne = () => {
+      if (!ecken) return;
+      const reihenfolge = Object.keys(ECK_NAMEN);
+      $('#crop-poly').setAttribute('points', reihenfolge.map((k) => `${ecken[k].x},${ecken[k].y}`).join(' '));
+      document.querySelectorAll('.crop-handle').forEach((h) => {
+        const p = ecken[h.dataset.k];
+        h.style.left = `${(p.x / breite) * 100}%`;
+        h.style.top = `${(p.y / hoehe) * 100}%`;
+      });
+    };
+    const fertig = () => URL.revokeObjectURL(url);
+
+    img.addEventListener('load', async () => {
+      breite = img.naturalWidth;
+      hoehe = img.naturalHeight;
+      $('#crop-svg').setAttribute('viewBox', `0 0 ${breite} ${hoehe}`);
+      ecken = seite.ecken ? JSON.parse(JSON.stringify(seite.ecken)) : Scanner.ganzesBild(breite, hoehe);
+      zeichne();
+      if (seite.eckenGeprueft) {
+        status('Ecken bei Bedarf auf die Blattecken ziehen.');
+        return;
+      }
+      status(Scanner.cvBereit() ? 'Kanten werden erkannt …' : 'Kantenerkennung wird geladen (einmalig ca. 9 MB) …');
+      const bereit = await Scanner.ladeOpenCv();
+      if (!bereit) {
+        seite.eckenGeprueft = true;
+        status('Kantenerkennung nicht verfügbar – mit den Ecken wird nur zugeschnitten.');
+        return;
+      }
+      status('Kanten werden erkannt …');
+      const erkannt = await Scanner.erkenneEcken(seite.file);
+      seite.eckenGeprueft = true;
+      if (vonHand || scan.bearbeite !== seite.id) return;
+      if (erkannt) {
+        ecken = erkannt;
+        zeichne();
+        status('Kanten erkannt. Ecken bei Bedarf verschieben.');
+      } else {
+        status('Keine Kanten erkannt – Ecken bitte von Hand auf die Blattecken ziehen.');
+      }
+    });
+    img.src = url;
+
+    // Ziehen der Eckpunkte (Pointer Events: Finger und Maus)
+    document.querySelectorAll('.crop-handle').forEach((h) => {
+      h.addEventListener('pointerdown', (ev) => {
+        ev.preventDefault();
+        h.setPointerCapture(ev.pointerId);
+        h.classList.add('aktiv');
+        vonHand = true;
+      });
+      h.addEventListener('pointermove', (ev) => {
+        if (!h.hasPointerCapture(ev.pointerId) || !ecken) return;
+        const r = img.getBoundingClientRect();
+        const x = Math.min(Math.max(ev.clientX - r.left, 0), r.width) / r.width * breite;
+        const y = Math.min(Math.max(ev.clientY - r.top, 0), r.height) / r.height * hoehe;
+        ecken[h.dataset.k] = { x, y };
+        zeichne();
+      });
+      const los = (ev) => { h.classList.remove('aktiv'); if (h.hasPointerCapture(ev.pointerId)) h.releasePointerCapture(ev.pointerId); };
+      h.addEventListener('pointerup', los);
+      h.addEventListener('pointercancel', los);
+    });
+
+    $('#crop-full').addEventListener('click', () => {
+      if (!breite) return;
+      vonHand = true;
+      ecken = Scanner.ganzesBild(breite, hoehe);
+      zeichne();
+      status('Ganzes Bild ausgewählt.');
+    });
+    $('#crop-retake').addEventListener('change', (ev) => {
+      const i = scan.seiten.indexOf(seite);
+      fertig();
+      seitenHinzufuegen(ev.target.files, { ersetzeIndex: i, bearbeiten: true });
+      renderScan();
+    });
+    $('#crop-ok').addEventListener('click', () => {
+      const voll = !ecken || Object.values(Scanner.ganzesBild(breite, hoehe)).every((p, i) => {
+        const e = Object.values(ecken)[i];
+        return Math.abs(p.x - e.x) < 2 && Math.abs(p.y - e.y) < 2;
+      });
+      seite.ecken = voll ? null : ecken;
+      seite.eckenGeprueft = true;
+      seite.thumb = null;
+      erzeugeThumb(seite);
+      scan.bearbeite = null;
+      fertig();
+      renderScan();
+    });
+    $('#crop-del').addEventListener('click', () => {
+      scan.seiten = scan.seiten.filter((x) => x !== seite);
+      scan.bearbeite = null;
+      fertig();
+      renderScan();
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // Offline-Warteschlange
+  // -------------------------------------------------------------------------
+  async function zeigeWarteschlange() {
+    const anzahl = await Queue.anzahl();
+    const home = $('#home-content');
+    if (!home || location.hash !== '#/' && location.hash !== '') return;
+    let banner = $('#queue-banner');
+    if (!anzahl) { if (banner) banner.remove(); return; }
+    if (!banner) {
+      banner = document.createElement('div');
+      banner.id = 'queue-banner';
+      banner.className = 'notice queue-banner';
+      home.parentNode.insertBefore(banner, home);
+    }
+    banner.innerHTML = `<span>⏳ ${anzahl} ${anzahl === 1 ? 'Scan wartet' : 'Scans warten'} auf den Upload.</span>
+      <button type="button" class="btn btn-secondary" id="queue-send">Jetzt senden</button>`;
+    $('#queue-send').addEventListener('click', () => warteschlangeSenden(true));
+  }
+
+  async function warteschlangeSenden(manuell = false) {
+    if (!state.code || !state.nutzer) return;
+    if (!(await Queue.anzahl())) return;
+    if (navigator.onLine === false) {
+      if (manuell) toast('Noch keine Internetverbindung.');
+      return;
+    }
+    try {
+      const { gesendet, offen } = await Queue.sendeAlle(state.code);
+      if (gesendet.length) {
+        const erster = gesendet[0];
+        toast(gesendet.length === 1
+          ? `Offline-Scan hochgeladen: ${[erster.kategorie, erster.absender].filter(Boolean).join(' – ') || erster.titel}`
+          : `${gesendet.length} Offline-Scans hochgeladen.`);
+      } else if (manuell && offen) {
+        toast('Upload nicht möglich – später erneut versuchen.');
+      }
+    } catch (err) {
+      if (err.auth) logout(err.message);
+    }
+    zeigeWarteschlange();
+  }
+
+  // -------------------------------------------------------------------------
+  // GiroCode (EPC-QR für Überweisungen per Banking-App)
+  // -------------------------------------------------------------------------
+  const QR_URL = 'https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js';
+  const QR_SRI = 'sha384-8FWZA6BGMXhsfO+BLtrJK0We6gg5o1JyO8xQm6peWDEUs17ACA5ziE/NIAkl9z2k';
+  let qrPromise = null;
+
+  function ladeQr() {
+    if (window.qrcode) return Promise.resolve(window.qrcode);
+    if (!qrPromise) {
+      qrPromise = Scanner.ladeSkript(QR_URL, QR_SRI)
+        .then(() => window.qrcode)
+        .catch((err) => { qrPromise = null; throw err; });
+    }
+    return qrPromise;
+  }
+
+  /** EPC069-12 („GiroCode“), Version 002, UTF-8, BIC optional. */
+  function epcDaten(d) {
+    const einzeilig = (s, max) => String(s || '').replace(/\s+/g, ' ').trim().slice(0, max);
+    const zweck = d.rechnungsnr ? `Rechnung ${d.rechnungsnr}` : d.titel;
+    return [
+      'BCD', '002', '1', 'SCT', '',
+      einzeilig(d.absender || d.titel || 'Empfänger', 70),
+      String(d.iban).replace(/\s/g, '').toUpperCase(),
+      `EUR${d.betrag.toFixed(2)}`,
+      '', '',
+      einzeilig(zweck, 140)
+    ].join('\n');
+  }
+
+  const giroMoeglich = (d) => ZAHLUNG.includes(d.kategorie) && d.iban && typeof d.betrag === 'number' && d.betrag > 0 && d.betrag < 1e9;
+
+  async function zeigeGiroCode(d, box) {
+    box.innerHTML = '<p class="muted">GiroCode wird erstellt …</p>';
+    try {
+      const qrcode = await ladeQr();
+      qrcode.stringToBytes = qrcode.stringToBytesFuncs['UTF-8'];
+      const qr = qrcode(0, 'M');
+      qr.addData(epcDaten(d), 'Byte');
+      qr.make();
+      box.innerHTML = `
+        <div class="girocode-qr">${qr.createSvgTag({ cellSize: 4, margin: 4, scalable: true, alt: 'GiroCode' })}</div>
+        <p class="muted girocode-hint">In der Banking-App „Fotoüberweisung“ bzw. „GiroCode scannen“ wählen. Vor dem Absenden bitte Empfänger und Betrag prüfen.</p>
+        <dl class="facts">
+          <dt>Empfänger</dt><dd>${esc(d.absender || d.titel)}</dd>
+          <dt>IBAN</dt><dd>${esc(fmtIban(d.iban))}</dd>
+          <dt>Betrag</dt><dd>${esc(fmtEuro(d.betrag))}</dd>
+          <dt>Zweck</dt><dd>${esc(d.rechnungsnr ? `Rechnung ${d.rechnungsnr}` : d.titel)}</dd>
+        </dl>`;
+    } catch (err) {
+      box.innerHTML = '<p class="notice notice-error">Der GiroCode konnte nicht erstellt werden (keine Verbindung?).</p>';
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // CSV-Export
+  // -------------------------------------------------------------------------
+  async function csvExport(jahr, btn) {
+    btn.disabled = true;
+    const text = btn.textContent;
+    btn.textContent = 'Wird erstellt …';
+    try {
+      const res = await Api.exportCsv(state.code, { jahr });
+      const blob = new Blob(['﻿' + res.csv], { type: 'text/csv;charset=utf-8' });
+      let geteilt = false;
+      try {
+        const datei = new File([blob], res.dateiname, { type: 'text/csv' });
+        if (navigator.canShare && navigator.canShare({ files: [datei] })) {
+          await navigator.share({ files: [datei], title: res.dateiname });
+          geteilt = true;
+        }
+      } catch (err) {
+        if (err && err.name === 'AbortError') geteilt = true; // Nutzer hat abgebrochen
+      }
+      if (!geteilt) {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = res.dateiname;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
+      }
+      toast(`${res.anzahl} ${res.anzahl === 1 ? 'Dokument' : 'Dokumente'} exportiert.`);
+    } catch (err) {
+      if (err.auth) return logout(err.message);
+      toast(err.offline ? 'Keine Verbindung.' : err.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = text;
     }
   }
 
@@ -650,7 +969,17 @@
       <input type="search" class="input search" id="suche" placeholder="Suchen: Absender, Titel, Rechnungsnr. …"
              value="${esc(f.suche)}" autocomplete="off" enterkeyhint="search">
       <p class="list-summary muted" id="list-summary"></p>
-      <ul class="cards" id="doc-list"><li class="muted">Wird geladen …</li></ul>`;
+      <ul class="cards" id="doc-list"><li class="muted">Wird geladen …</li></ul>
+      <section class="export">
+        <h2>CSV-Export</h2>
+        <div class="export-row">
+          <select class="input" id="export-jahr" aria-label="Jahr">
+            ${[0, 1, 2, 3, 4].map((i) => new Date().getFullYear() - i).map((j) => `<option>${j}</option>`).join('')}
+          </select>
+          <button type="button" class="btn btn-secondary" id="export-btn">Herunterladen</button>
+        </div>
+      </section>`;
+    $('#export-btn').addEventListener('click', (ev) => csvExport(Number($('#export-jahr').value), ev.currentTarget));
 
     document.querySelectorAll('[data-status]').forEach((b) => b.addEventListener('click', () => {
       liste.filter.status = b.dataset.status;
@@ -854,6 +1183,9 @@
       ${istUeberfaellig(d) ? `<p class="notice notice-error">Überfällig seit ${esc(fmtDatum(d.faellig_am))}.</p>` : ''}
       ${duplikat ? `<p class="notice notice-warn">Mögliches Duplikat – <a href="#/dok/${esc(duplikat[1])}">anderes Dokument ansehen</a>.</p>` : ''}
       ${dokumentFakten(d)}
+      ${giroMoeglich(d) && d.status !== 'bezahlt' ? `
+        <button type="button" class="btn btn-secondary btn-block" id="giro-btn">GiroCode anzeigen</button>
+        <div class="girocode" id="giro-box" hidden></div>` : ''}
       ${zahlung ? `<button type="button" class="btn ${d.status === 'bezahlt' ? 'btn-secondary' : 'btn-primary'} btn-block" id="status-btn">
           ${d.status === 'bezahlt' ? 'Wieder als offen markieren' : '✓ Als bezahlt markieren'}</button>` : ''}
       <button type="button" class="btn btn-secondary btn-block" id="edit-btn">Angaben korrigieren</button>
@@ -861,6 +1193,18 @@
       ${d.drive_url ? `<a href="${esc(d.drive_url)}" target="_blank" rel="noopener" class="btn btn-secondary btn-block">PDF in Drive öffnen</a>` : ''}
       <button type="button" class="btn btn-danger btn-block" id="delete-btn">Löschen</button>`;
 
+    const giroBtn = $('#giro-btn');
+    if (giroBtn) {
+      giroBtn.addEventListener('click', () => {
+        const box = $('#giro-box');
+        box.hidden = !box.hidden;
+        giroBtn.textContent = box.hidden ? 'GiroCode anzeigen' : 'GiroCode ausblenden';
+        if (!box.hidden && !box.dataset.fertig) {
+          box.dataset.fertig = '1';
+          zeigeGiroCode(d, box);
+        }
+      });
+    }
     if (zahlung) {
       $('#status-btn').addEventListener('click', async () => {
         await bezahltUmschalten(d.id);
@@ -925,7 +1269,11 @@
     window.addEventListener('hashchange', route);
 
     route();
-    refreshSession();
+    refreshSession().then(() => warteschlangeSenden());
+    window.addEventListener('online', () => warteschlangeSenden());
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') warteschlangeSenden();
+    });
 
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js').catch((err) => console.warn('Service Worker:', err));
