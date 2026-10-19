@@ -8,6 +8,8 @@ Dokumente mit dem Handy scannen, im eigenen Google Drive ablegen und Rechnungen 
 
 > **Stand: Meilenstein 5 (alle Funktionen).** Scannen mit Kantenerkennung und Eckpunkt-Korrektur, Ablage im Google Drive, Texterkennung und Kategorisierung, Tracking-Liste mit Abhaken, Detailansicht mit GiroCode, Offline-Warteschlange, tägliche Mail-Erinnerungen und CSV-Export pro Jahr.
 
+**Anleitung für Nutzer:** [DocScan-Anleitung.pdf](anleitung/DocScan-Anleitung.pdf) – Installation auf iPhone, iPad, Android und Computer, erstes Scannen, Hilfe bei Problemen (5 Seiten, zum Ausdrucken oder Weiterschicken).
+
 ---
 
 ## Einrichtung (einmalig, ca. 15 Minuten)
