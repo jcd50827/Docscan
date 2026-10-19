@@ -6,7 +6,7 @@ Dokumente mit dem Handy scannen, im eigenen Google Drive ablegen und Rechnungen 
 - **Backend:** Google Apps Script unter deinem Google-Konto.
 - **Daten:** ein Google Sheet (Nutzer, Dokumente, Log, Regeln) und ein Ordner `DocScan` in deinem Google Drive.
 
-> **Stand: Meilenstein 4 (Tracking-Liste).** Scannen, Ablage im Google Drive, Texterkennung und Kategorisierung funktionieren. Editoren haben eine Tracking-Liste mit Filtern, Suche, Abhaken (Checkbox oder Wischen, mit „Rückgängig“), Detailansicht zum Bearbeiten und Löschen sowie die Übersicht auf der Startseite. Offline-Warteschlange, Mail-Erinnerungen, GiroCode, CSV-Export und Kantenerkennung folgen in Meilenstein 5.
+> **Stand: Meilenstein 5 (alle Funktionen).** Scannen mit Kantenerkennung und Eckpunkt-Korrektur, Ablage im Google Drive, Texterkennung und Kategorisierung, Tracking-Liste mit Abhaken, Detailansicht mit GiroCode, Offline-Warteschlange, tägliche Mail-Erinnerungen und CSV-Export pro Jahr.
 
 ---
 
@@ -28,7 +28,7 @@ Du brauchst ein Google-Konto und ein GitHub-Konto (beides kostenlos). Programmie
    - Den Inhalt der Datei aus dem Repo komplett hineinkopieren.
    - Die vorhandene Datei `Code.gs` nicht neu anlegen, sondern ihren Inhalt ersetzen.
 
-   Aktuell sind das: `Code.gs`, `Auth.gs`, `Documents.gs`, `Setup.gs`, `Ocr.gs`, `Classify.gs`.
+   Aktuell sind das: `Code.gs`, `Auth.gs`, `Documents.gs`, `Setup.gs`, `Ocr.gs`, `Classify.gs`, `Reminders.gs`.
 4. Manifest-Datei übernehmen:
    - Links auf das Zahnrad **Projekteinstellungen** klicken und **„appsscript.json“-Manifestdatei im Editor anzeigen** anhaken.
    - Zurück im Editor die Datei `appsscript.json` öffnen und ihren Inhalt durch den aus [`apps-script/appsscript.json`](apps-script/appsscript.json) ersetzen.
@@ -112,8 +112,13 @@ Die App selbst (GitHub Pages) aktualisiert sich automatisch. Das Apps Script mus
 4. **Bereitstellen → Bereitstellungen verwalten → Bearbeiten (Stift) → Version: „Neue Version“ → Bereitstellen.**
    Wichtig: *nicht* „Neue Bereitstellung“, sonst ändert sich die URL.
 
-**Meilenstein 4 ändert:** [`Code.gs`](https://raw.githubusercontent.com/jcd50827/Docscan/main/apps-script/Code.gs) und [`Documents.gs`](https://raw.githubusercontent.com/jcd50827/Docscan/main/apps-script/Documents.gs).
+**Meilenstein 5 ändert:** [`Code.gs`](https://raw.githubusercontent.com/jcd50827/Docscan/main/apps-script/Code.gs), [`Documents.gs`](https://raw.githubusercontent.com/jcd50827/Docscan/main/apps-script/Documents.gs) und [`Setup.gs`](https://raw.githubusercontent.com/jcd50827/Docscan/main/apps-script/Setup.gs); **neu anlegen:** [`Reminders.gs`](https://raw.githubusercontent.com/jcd50827/Docscan/main/apps-script/Reminders.gs) (links **+ → Skript**, Name `Reminders`).
 
+**Einmalig nach Meilenstein 5 – Erinnerungen einrichten:** Im Script-Editor die Funktion **`setup`** wählen → **Ausführen** → die neuen Berechtigungen (E-Mails senden, Trigger verwalten) erlauben, **alle** Häkchen setzen. Damit wird die tägliche Erinnerung um 8 Uhr angelegt. Zum Ausprobieren im Sheet **DocScan → Erinnerungs-Mail jetzt senden** (es kommt nur eine Mail, wenn eine offene Rechnung überfällig oder in den nächsten 3 Tagen fällig ist). Den Trigger siehst du im Script-Editor links unter **Trigger** (Uhr-Symbol).
+
+Die Mail geht an dich (Besitzer) und an alle aktiven **Editoren**, bei denen im Tab **Nutzer** eine E-Mail-Adresse steht.
+
+(Meilenstein 4 hatte `Code.gs` und `Documents.gs` geändert.)
 (Meilenstein 3 hatte `Code.gs` und `Documents.gs` geändert und `Classify.gs` sowie `Ocr.gs` neu hinzugefügt – danach einmal **`testOcr`** im Script-Editor ausführen und die neue Berechtigung für Google Docs erlauben, sonst landet jeder Scan als „Sonstiges“.)
 
 (Meilenstein 2 hatte `Code.gs`, `Documents.gs` und `Setup.gs` geändert – danach einmal **DocScan → Einrichtung ausführen**.)
@@ -121,6 +126,31 @@ Die App selbst (GitHub Pages) aktualisiert sich automatisch. Das Apps Script mus
 Auf dem iPhone die App danach einmal schließen und neu öffnen, damit die neue Version geladen wird.
 
 ---
+
+## Test-Checkliste Meilenstein 5 (auf dem iPhone)
+
+**Kantenerkennung & Eckpunkt-Korrektur**
+- [ ] Nach dem Foto öffnet sich „Ecken anpassen“. Beim allerersten Mal steht dort „Kantenerkennung wird geladen (einmalig ca. 9 MB)“ – am besten im WLAN. Danach geht es in 1–2 Sekunden.
+- [ ] Liegt das Blatt auf dunklerem Untergrund, sitzen die vier Punkte auf den Blattecken („Kanten erkannt“). Punkte lassen sich mit dem Finger verschieben; **Ganzes Bild** setzt sie auf die Bildecken; **Neu aufnehmen** ersetzt das Foto.
+- [ ] **Übernehmen** → Vorschaubild zeigt das gerade gerückte Blatt; im PDF ist die Seite entzerrt.
+- [ ] Ein Vorschaubild antippen öffnet den Eckpunkt-Editor erneut; **Seite verwerfen** entfernt die Seite.
+- [ ] Fotos über **Aus Fotos wählen** werden automatisch zugeschnitten (antippen zum Korrigieren).
+
+**Offline-Warteschlange**
+- [ ] Flugmodus an → scannen → **Hochladen** → „Offline gespeichert“.
+- [ ] Startseite zeigt „⏳ 1 Scan wartet auf den Upload“.
+- [ ] Flugmodus aus → App kurz verlassen und wieder öffnen (oder **Jetzt senden**) → Hinweis „Offline-Scan hochgeladen …“, das Dokument ist im Sheet/Drive.
+
+**GiroCode (Editor)**
+- [ ] Detailansicht einer offenen Rechnung mit IBAN und Betrag → **GiroCode anzeigen** → QR-Code mit Empfänger, IBAN, Betrag, Zweck.
+- [ ] In der Banking-App „Fotoüberweisung“/„GiroCode scannen“ → Empfänger, IBAN, Betrag und Verwendungszweck sind ausgefüllt (**nicht absenden**, nur prüfen).
+
+**Erinnerungen**
+- [ ] Am MacBook im Sheet **DocScan → Erinnerungs-Mail jetzt senden** → Mail mit „Überfällig“ / „In den nächsten 3 Tagen fällig“ (nur wenn etwas ansteht; sonst Meldung „Nichts fällig“).
+- [ ] Am nächsten Morgen nach 8 Uhr kommt die Mail automatisch (wenn etwas ansteht).
+
+**CSV-Export (Editor)**
+- [ ] Tracking-Liste → unten **CSV-Export** → Jahr wählen → **Herunterladen** → „Teilen“-Menü erscheint → „In Dateien sichern“ oder per Mail senden; die Datei öffnet sich in Numbers/Excel mit Umlauten und Beträgen korrekt.
 
 ## Test-Checkliste Meilenstein 4 (Editor, auf dem iPhone)
 
@@ -185,7 +215,8 @@ Am besten mit 3–4 echten Dokumenten: eine Rechnung, eine Mahnung oder Zahlungs
 ```
 pwa/                 statische PWA (kein Build-Schritt), wird auf GitHub Pages veröffentlicht
   index.html, app.js (UI/Routing), api.js (Apps-Script-Aufrufe), styles.css,
-  scanner.js (Bildverarbeitung, PDF mit jsPDF), sw.js (Service Worker),
+  scanner.js (Kantenerkennung mit jscanify/OpenCV, Entzerrung, PDF mit jsPDF),
+  queue.js (Offline-Warteschlange in IndexedDB), sw.js (Service Worker),
   manifest.webmanifest, config.js, icons/
 apps-script/         Google Apps Script (V8)
   Code.gs            doGet/doPost, Routing, Sheet-Hilfsfunktionen
@@ -193,6 +224,7 @@ apps-script/         Google Apps Script (V8)
   Documents.gs       Upload & Drive-Ablage, Korrektur, Tracking-Liste, Status, Löschen, Übersicht
   Ocr.gs             Texterkennung über Drive-Konvertierung (+ testOcr)
   Classify.gs        Kategorisierung & Feldextraktion, regelbasiert (+ testClassify)
+  Reminders.gs       Tägliche Mail-Erinnerung (Trigger 8 Uhr, + testErinnerung)
   Setup.gs           setup(), Menü, „Nutzer anlegen“
   appsscript.json    Manifest inkl. Drive API v3
 .github/workflows/pages.yml   Deployment von pwa/ auf GitHub Pages
@@ -200,7 +232,7 @@ apps-script/         Google Apps Script (V8)
 
 Die vollständige Spezifikation steht in [`CLAUDE.md`](CLAUDE.md).
 
-### API (Stand Meilenstein 4)
+### API (Stand Meilenstein 5)
 
 Alle Requests: `POST` an die Web-App-URL, `Content-Type: text/plain;charset=utf-8`, Body `{ action, code, ...payload }`.
 
@@ -213,6 +245,7 @@ Alle Requests: `POST` an die Web-App-URL, `Content-Type: text/plain;charset=utf-
 | `list` | editor | Payload `{ filter: { status: offen\|bezahlt\|erledigt\|alle, kategorie, suche, id } }` → `{ ok, dokumente, gesamt }` (offene nach Fälligkeit, max. 300) |
 | `setStatus` | editor | Payload `{ id, status }` → `{ ok, dokument }`; „bezahlt“ setzt `bezahlt_am`/`bezahlt_von` |
 | `delete` | editor | Payload `{ id }` → `{ ok, id }`; Soft Delete (`geloescht` = TRUE), PDF bleibt im Drive |
+| `exportCsv` | editor | Payload `{ jahr }` → `{ ok, dateiname, csv, anzahl }` (Semikolon, Dezimalkomma, nach Upload-Datum) |
 | `stats` | editor | `{ ok, summeOffen, anzahlOffen, anzahlUeberfaellig, naechsteFaelligkeiten }` |
 
 Fehler: `{ ok: false, error: "…" }`; bei ungültigem oder deaktiviertem Code zusätzlich `auth: true`, damit die App abmeldet. Nach 10 Fehlversuchen pro Code-Präfix ist dieser Präfix 15 Minuten gesperrt.
