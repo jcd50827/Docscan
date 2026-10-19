@@ -1,24 +1,28 @@
 /**
- * DocScan – Dokumente: Upload und Drive-Ablage, Lesen für die Startseite.
- * Status ändern, Bearbeiten und Löschen folgen in Meilenstein 4.
+ * DocScan – Dokumente: Upload mit OCR/Kategorisierung, Korrektur, Lesen.
+ * Status ändern, Löschen und die Tracking-Liste folgen in Meilenstein 4.
  */
 
 var TAGE_EIGENE_UPLOADS = 7;
 var TAGE_NAECHSTE_FAELLIGKEITEN = 7;
 var MAX_PDF_BYTES = 15 * 1024 * 1024;
 var ZAHLUNGS_KATEGORIEN = ['Rechnung', 'Mahnung'];
+var NOTIZ_GESCHAETZT = 'Fälligkeit geschätzt (Rechnungsdatum + 14 Tage)';
+var MONATSNAMEN = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August',
+  'September', 'Oktober', 'November', 'Dezember'];
 
 /**
- * Nimmt ein PDF (Base64) entgegen, legt es unter DocScan/<Jahr>/<Kategorie>/ ab
- * und schreibt eine Zeile in „Dokumente“.
+ * Upload: PDF prüfen → OCR → Kategorie und Felder erkennen → Duplikat prüfen →
+ * als „YYYY-MM-DD_<Absender>_<Kategorie>[_<Betrag>€].pdf“ unter
+ * DocScan/<Jahr>/<Kategorie>/ ablegen → Zeile in „Dokumente“.
  */
 function actionUpload_(nutzer, body) {
   var blob = pdfAusBase64_(body.pdfBase64);
   var jetzt = new Date();
-  var titel = bereinigeText_(body.titelVorschlag, 100) ||
-    'Scan ' + Utilities.formatDate(jetzt, Session.getScriptTimeZone(), 'dd.MM.yyyy HH:mm');
 
-  var erkannt = erkenneDokument_(blob);
+  // OCR dauert einige Sekunden und läuft deshalb außerhalb der Sperre.
+  var erkannt = analysiereText_(ocrText_(blob), ladeRegeln_());
+  var titel = bereinigeText_(body.titelVorschlag, 100) || standardTitel_(erkannt, jetzt);
 
   var doc = {
     id: Utilities.getUuid(),
@@ -42,36 +46,144 @@ function actionUpload_(nutzer, body) {
     notiz: ''
   };
 
-  blob.setName(dateiname_(doc));
-  var datei = getZielordner_(jetzt.getFullYear(), doc.kategorie).createFile(blob);
-  doc.drive_file_id = datei.getId();
-  doc.drive_url = datei.getUrl();
+  return mitLock_(function () {
+    var duplikat = findeDuplikat_(doc.fingerprint);
+    var notizen = [];
+    if (duplikat) notizen.push('Mögliches Duplikat von ' + duplikat.id);
+    if (erkannt.faelligGeschaetzt) notizen.push(NOTIZ_GESCHAETZT);
+    doc.notiz = notizen.join(' · ');
 
-  try {
-    appendRow_(getSheet_('Dokumente'), doc);
-  } catch (err) {
-    datei.setTrashed(true); // keine verwaiste PDF ohne Sheet-Eintrag
-    throw err;
-  }
-  log_(nutzer.name, 'upload', doc.id);
-  return { dokument: toClient_(doc) };
+    blob.setName(dateiname_(doc));
+    var datei = getZielordner_(jetzt.getFullYear(), doc.kategorie).createFile(blob);
+    doc.drive_file_id = datei.getId();
+    doc.drive_url = datei.getUrl();
+
+    try {
+      appendRow_(getSheet_('Dokumente'), doc);
+    } catch (err) {
+      datei.setTrashed(true); // keine verwaiste PDF ohne Sheet-Eintrag
+      throw err;
+    }
+    log_(nutzer.name, 'upload', doc.id);
+
+    var antwort = toClient_(doc);
+    antwort.faelligGeschaetzt = erkannt.faelligGeschaetzt;
+    antwort.textErkannt = !!erkannt.ocr_text_kurz;
+    antwort.duplikatVon = duplikat ? toClient_({
+      id: duplikat.id, titel: duplikat.titel, erstellt_am: duplikat.erstellt_am
+    }) : null;
+    return { dokument: antwort };
+  });
 }
 
 /**
- * Erkennung von Kategorie und Feldern. Meilenstein 3 ersetzt das durch
- * OCR (Ocr.gs) und regelbasierte Klassifizierung (Classify.gs).
+ * Korrektur durch Editoren: { id, felder: { kategorie, titel, absender, betrag,
+ * faellig_am (YYYY-MM-DD), iban, rechnungsnr, notiz } }. Benennt die PDF neu und
+ * verschiebt sie bei geänderter Kategorie in den passenden Ordner.
  */
-function erkenneDokument_(blob) {
-  return {
-    kategorie: 'Sonstiges',
-    absender: '',
-    betrag: '',
-    faellig_am: '',
-    iban: '',
-    rechnungsnr: '',
-    ocr_text_kurz: '',
-    fingerprint: ''
-  };
+function actionUpdate_(nutzer, body) {
+  var alt = findeDokument_(body.id);
+  var f = body.felder || {};
+  var neu = {};
+
+  if (has_(f, 'kategorie')) {
+    if (KATEGORIEN.indexOf(f.kategorie) < 0) throw fehler_('Unbekannte Kategorie.');
+    neu.kategorie = f.kategorie;
+  }
+  ['titel', 'absender', 'rechnungsnr'].forEach(function (k) {
+    if (has_(f, k)) neu[k] = bereinigeText_(String(f[k] == null ? '' : f[k]), 100);
+  });
+  if (has_(f, 'notiz')) neu.notiz = bereinigeText_(String(f.notiz == null ? '' : f.notiz), 500);
+  if (has_(f, 'betrag')) neu.betrag = betragEingabe_(f.betrag);
+  if (has_(f, 'faellig_am')) neu.faellig_am = datumEingabe_(f.faellig_am);
+  if (has_(f, 'iban')) {
+    neu.iban = String(f.iban || '').replace(/\s/g, '').toUpperCase();
+    if (neu.iban && !ibanGueltig_(neu.iban)) throw fehler_('Die IBAN ist ungültig (Prüfziffer stimmt nicht).');
+  }
+  if (neu.titel === '') throw fehler_('Der Titel darf nicht leer sein.');
+
+  // Status passend zur Kategorie: Rechnung/Mahnung → offen, sonst erledigt („bezahlt“ bleibt).
+  if (neu.kategorie && neu.kategorie !== alt.kategorie && alt.status !== 'bezahlt') {
+    neu.status = ZAHLUNGS_KATEGORIEN.indexOf(neu.kategorie) >= 0 ? 'offen' : 'erledigt';
+  }
+  // Wer die Fälligkeit selbst setzt, braucht den Hinweis „geschätzt“ nicht mehr.
+  if (has_(neu, 'faellig_am') && !has_(f, 'notiz') && alt.notiz.indexOf(NOTIZ_GESCHAETZT) >= 0) {
+    neu.notiz = alt.notiz.split(' · ').filter(function (n) { return n !== NOTIZ_GESCHAETZT; }).join(' · ');
+  }
+
+  schreibeFelder_(getSheet_('Dokumente'), alt._zeile, neu);
+  var doc = Object.assign({}, alt, neu);
+
+  if (doc.drive_file_id) {
+    try {
+      var datei = DriveApp.getFileById(doc.drive_file_id);
+      datei.setName(dateiname_(doc));
+      if (neu.kategorie && neu.kategorie !== alt.kategorie) {
+        datei.moveTo(getZielordner_((doc.erstellt_am || new Date()).getFullYear(), doc.kategorie));
+      }
+    } catch (err) {
+      console.error('PDF konnte nicht umbenannt/verschoben werden: ' + err);
+    }
+  }
+  log_(nutzer.name, 'update', doc.id);
+  return { dokument: toClient_(doc) };
+}
+
+/** Neuester nicht gelöschter Eintrag mit gleichem Fingerprint, sonst null. */
+function findeDuplikat_(fingerprint) {
+  if (!fingerprint) return null;
+  var treffer = readDocuments_().filter(function (d) { return d.fingerprint === fingerprint; });
+  return treffer.length ? treffer[treffer.length - 1] : null;
+}
+
+function findeDokument_(id) {
+  if (!id) throw fehler_('Es wurde kein Dokument angegeben.');
+  var treffer = readDocuments_().filter(function (d) { return d.id === String(id); });
+  if (!treffer.length) throw fehler_('Das Dokument wurde nicht gefunden.');
+  return treffer[0];
+}
+
+/** Schreibt einzelne Felder in eine Zeile (Spalten über die Kopfzeile). */
+function schreibeFelder_(sheet, zeile, felder) {
+  var kopf = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0]
+    .map(function (h) { return String(h).trim(); });
+  Object.keys(felder).forEach(function (k) {
+    var spalte = kopf.indexOf(k);
+    if (spalte >= 0) sheet.getRange(zeile, spalte + 1).setValue(alsZellwert_(felder[k] === null ? '' : felder[k]));
+  });
+}
+
+/** „Absender – Kategorie Monat Jahr“, ohne Absender „Scan TT.MM.JJJJ HH:mm“. */
+function standardTitel_(erkannt, datum) {
+  if (erkannt.absender && erkannt.kategorie !== 'Sonstiges') {
+    return bereinigeText_(erkannt.absender + ' – ' + erkannt.kategorie + ' ' +
+      MONATSNAMEN[datum.getMonth()] + ' ' + datum.getFullYear(), 100);
+  }
+  return 'Scan ' + Utilities.formatDate(datum, Session.getScriptTimeZone(), 'dd.MM.yyyy HH:mm');
+}
+
+/** „84,20“ / „1.234,56“ / „84.20“ / 84.2 → Zahl; leer → ''. */
+function betragEingabe_(wert) {
+  if (wert === null || wert === undefined || String(wert).trim() === '') return '';
+  if (typeof wert === 'number' && isFinite(wert)) return Math.round(wert * 100) / 100;
+  var s = String(wert).replace(/[€\s]/g, '');
+  var zahl = s.indexOf(',') >= 0 ? parseBetrag_(s) : parseFloat(s);
+  if (zahl === null || isNaN(zahl)) throw fehler_('Der Betrag ist ungültig.');
+  return Math.round(zahl * 100) / 100;
+}
+
+/** „YYYY-MM-DD“ → Date um 0 Uhr; leer → ''. */
+function datumEingabe_(wert) {
+  if (wert === null || wert === undefined || String(wert).trim() === '') return '';
+  var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(wert));
+  if (!m) throw fehler_('Das Datum ist ungültig.');
+  var d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  if (d.getMonth() !== Number(m[2]) - 1) throw fehler_('Das Datum ist ungültig.');
+  return d;
+}
+
+function has_(obj, key) {
+  return Object.prototype.hasOwnProperty.call(obj, key);
 }
 
 function pdfAusBase64_(base64) {
@@ -95,8 +207,9 @@ function pdfAusBase64_(base64) {
 
 /** YYYY-MM-DD_<Absender>_<Kategorie>[_<Betrag>€].pdf – ohne Absender wird der Titel genommen. */
 function dateiname_(doc) {
-  var datum = Utilities.formatDate(doc.erstellt_am, Session.getScriptTimeZone(), 'yyyy-MM-dd');
-  var teile = [datum, bereinigeText_(doc.absender || doc.titel, 60).replace(/[\\/:*?"<>|]/g, '-') || 'Scan', doc.kategorie];
+  var datum = Utilities.formatDate(doc.erstellt_am || new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  var name = bereinigeText_(doc.absender || doc.titel, 60).replace(/[\\/:*?"<>|]/g, '-') || 'Scan';
+  var teile = [datum, name, doc.kategorie];
   if (typeof doc.betrag === 'number') teile.push(doc.betrag.toFixed(2).replace('.', ',') + '€');
   return teile.join('_') + '.pdf';
 }
@@ -162,12 +275,13 @@ function actionStats_() {
   };
 }
 
-/** Alle nicht gelöschten Dokumente mit normalisierten Typen. */
+/** Alle nicht gelöschten Dokumente mit normalisierten Typen (_zeile = Zeilennummer im Sheet). */
 function readDocuments_() {
   return readTable_(getSheet_('Dokumente'))
     .filter(function (d) { return d.id && !istWahr_(d.geloescht); })
     .map(function (d) {
       return {
+        _zeile: d._zeile,
         id: String(d.id),
         erstellt_am: d.erstellt_am instanceof Date ? d.erstellt_am : null,
         hochgeladen_von: String(d.hochgeladen_von || ''),
@@ -181,16 +295,19 @@ function readDocuments_() {
         status: String(d.status || ''),
         bezahlt_am: d.bezahlt_am instanceof Date ? d.bezahlt_am : null,
         bezahlt_von: String(d.bezahlt_von || ''),
+        drive_file_id: String(d.drive_file_id || ''),
         drive_url: String(d.drive_url || ''),
+        fingerprint: String(d.fingerprint || ''),
         notiz: String(d.notiz || '')
       };
     });
 }
 
-/** Datumswerte als ISO-String, damit JSON eindeutig ist. */
+/** Für die App: Datumswerte als ISO-String, interne Felder weglassen. */
 function toClient_(d) {
   var out = {};
   Object.keys(d).forEach(function (k) {
+    if (k.charAt(0) === '_' || k === 'fingerprint' || k === 'ocr_text_kurz' || k === 'geloescht') return;
     out[k] = d[k] instanceof Date ? d[k].toISOString() : d[k];
   });
   return out;
