@@ -20,6 +20,9 @@ function getActions_() {
     // upload sperrt selbst, damit die langsame OCR nicht unter der Sperre läuft.
     upload:   { rolle: null,     schreibend: false, fn: actionUpload_ },
     update:   { rolle: 'editor', schreibend: true,  fn: actionUpdate_ },
+    list:     { rolle: 'editor', schreibend: false, fn: actionList_ },
+    setStatus:{ rolle: 'editor', schreibend: true,  fn: actionSetStatus_ },
+    delete:   { rolle: 'editor', schreibend: true,  fn: actionDelete_ },
     listMine: { rolle: null,     schreibend: false, fn: actionListMine_ },
     stats:    { rolle: 'editor', schreibend: false, fn: actionStats_ }
   };

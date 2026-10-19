@@ -1,12 +1,14 @@
 /**
- * DocScan – Dokumente: Upload mit OCR/Kategorisierung, Korrektur, Lesen.
- * Status ändern, Löschen und die Tracking-Liste folgen in Meilenstein 4.
+ * DocScan – Dokumente: Upload mit OCR/Kategorisierung, Korrektur,
+ * Tracking-Liste, Status, Löschen (Soft Delete), Übersicht.
  */
 
 var TAGE_EIGENE_UPLOADS = 7;
 var TAGE_NAECHSTE_FAELLIGKEITEN = 7;
 var MAX_PDF_BYTES = 15 * 1024 * 1024;
 var ZAHLUNGS_KATEGORIEN = ['Rechnung', 'Mahnung'];
+var STATUS_WERTE = ['offen', 'bezahlt', 'erledigt'];
+var MAX_LISTE = 300;
 var NOTIZ_GESCHAETZT = 'Fälligkeit geschätzt (Rechnungsdatum + 14 Tage)';
 var MONATSNAMEN = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August',
   'September', 'Oktober', 'November', 'Dezember'];
@@ -127,6 +129,67 @@ function actionUpdate_(nutzer, body) {
   }
   log_(nutzer.name, 'update', doc.id);
   return { dokument: toClient_(doc) };
+}
+
+/**
+ * Tracking-Liste: { filter: { status: offen|bezahlt|erledigt|alle, kategorie, suche, id } }.
+ * Offene zuerst nach Fälligkeit, danach die übrigen, neueste zuerst.
+ */
+function actionList_(nutzer, body) {
+  var f = body.filter || {};
+  var doks = readDocuments_();
+  if (f.id) {
+    doks = doks.filter(function (d) { return d.id === String(f.id); });
+  } else {
+    var status = f.status || 'alle';
+    if (status !== 'alle') doks = doks.filter(function (d) { return d.status === status; });
+    if (f.kategorie) doks = doks.filter(function (d) { return d.kategorie === f.kategorie; });
+    var woerter = String(f.suche || '').toLowerCase().split(/\s+/).filter(Boolean);
+    if (woerter.length) {
+      doks = doks.filter(function (d) {
+        var heuhaufen = [d.titel, d.absender, d.kategorie, d.rechnungsnr, d.iban, d.notiz,
+          d.hochgeladen_von, d.ocr_text_kurz, typeof d.betrag === 'number' ? d.betrag.toFixed(2).replace('.', ',') : '']
+          .join(' ').toLowerCase();
+        return woerter.every(function (w) { return heuhaufen.indexOf(w) >= 0; });
+      });
+    }
+  }
+  doks.sort(listenSortierung_);
+  return { dokumente: doks.slice(0, MAX_LISTE).map(toClient_), gesamt: doks.length };
+}
+
+function listenSortierung_(a, b) {
+  var ao = a.status === 'offen' ? 0 : 1;
+  var bo = b.status === 'offen' ? 0 : 1;
+  if (ao !== bo) return ao - bo;
+  if (ao === 0) {
+    var af = a.faellig_am ? a.faellig_am.getTime() : Infinity;
+    var bf = b.faellig_am ? b.faellig_am.getTime() : Infinity;
+    if (af !== bf) return af - bf;
+  }
+  return (b.erstellt_am ? b.erstellt_am.getTime() : 0) - (a.erstellt_am ? a.erstellt_am.getTime() : 0);
+}
+
+/** { id, status }: bezahlt setzt bezahlt_am/bezahlt_von, alles andere leert sie. */
+function actionSetStatus_(nutzer, body) {
+  if (STATUS_WERTE.indexOf(body.status) < 0) throw fehler_('Unbekannter Status.');
+  var alt = findeDokument_(body.id);
+  var neu = {
+    status: body.status,
+    bezahlt_am: body.status === 'bezahlt' ? new Date() : '',
+    bezahlt_von: body.status === 'bezahlt' ? nutzer.name : ''
+  };
+  schreibeFelder_(getSheet_('Dokumente'), alt._zeile, neu);
+  log_(nutzer.name, 'status_' + body.status, alt.id);
+  return { dokument: toClient_(Object.assign({}, alt, neu)) };
+}
+
+/** Soft Delete: Die Zeile bleibt mit geloescht = TRUE, die PDF bleibt im Drive. */
+function actionDelete_(nutzer, body) {
+  var alt = findeDokument_(body.id);
+  schreibeFelder_(getSheet_('Dokumente'), alt._zeile, { geloescht: true });
+  log_(nutzer.name, 'delete', alt.id);
+  return { id: alt.id };
 }
 
 /** Neuester nicht gelöschter Eintrag mit gleichem Fingerprint, sonst null. */
@@ -298,6 +361,7 @@ function readDocuments_() {
         drive_file_id: String(d.drive_file_id || ''),
         drive_url: String(d.drive_url || ''),
         fingerprint: String(d.fingerprint || ''),
+        ocr_text_kurz: String(d.ocr_text_kurz || ''),
         notiz: String(d.notiz || '')
       };
     });
