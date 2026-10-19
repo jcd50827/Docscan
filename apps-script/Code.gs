@@ -17,6 +17,7 @@
 function getActions_() {
   return {
     login:    { rolle: null,     schreibend: false, fn: actionLogin_ },
+    upload:   { rolle: null,     schreibend: true,  fn: actionUpload_ },
     listMine: { rolle: null,     schreibend: false, fn: actionListMine_ },
     stats:    { rolle: 'editor', schreibend: false, fn: actionStats_ }
   };
@@ -151,9 +152,14 @@ function appendRow_(sheet, obj) {
   var kopf = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
   var zeile = kopf.map(function (h) {
     var key = String(h).trim();
-    return Object.prototype.hasOwnProperty.call(obj, key) ? obj[key] : '';
+    return Object.prototype.hasOwnProperty.call(obj, key) ? alsZellwert_(obj[key]) : '';
   });
   sheet.appendRow(zeile);
+}
+
+/** Text, der mit = + - @ beginnt, würde das Sheet als Formel ausführen → als Text markieren. */
+function alsZellwert_(wert) {
+  return typeof wert === 'string' && /^[=+\-@]/.test(wert) ? "'" + wert : wert;
 }
 
 /** Schreibt einen Eintrag in den Tab „Log“. */
