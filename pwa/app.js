@@ -220,12 +220,19 @@
         <span>Scannen</span>
       </label>
       <input type="file" id="home-cam" accept="image/*" capture="environment" hidden>
+      <label class="scan-alt" for="home-lib">oder Foto aus der Mediathek wählen</label>
+      <input type="file" id="home-lib" accept="image/*" multiple hidden>
       <section id="home-content" class="home-content">
         <p class="muted">Wird geladen …</p>
       </section>`;
 
     $('#home-cam').addEventListener('change', (ev) => {
       seitenHinzufuegen(ev.target.files, { bearbeiten: true });
+      location.hash = '#/scan';
+    });
+    // Ein einzelnes Foto aus der Mediathek → gleich Ecken prüfen; mehrere → Kanten im Hintergrund.
+    $('#home-lib').addEventListener('change', (ev) => {
+      seitenHinzufuegen(ev.target.files, { bearbeiten: ev.target.files.length === 1 });
       location.hash = '#/scan';
     });
     zeigeWarteschlange();

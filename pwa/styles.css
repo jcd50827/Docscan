@@ -437,3 +437,14 @@ a.card-link { color: inherit; text-decoration: none; }
 /* ---- CSV-Export ---- */
 .export { margin-top: 28px; }
 .export-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; }
+
+/* Startseite: Alternative zum Kamera-Button */
+.scan-alt {
+  display: flex; align-items: center; justify-content: center;
+  min-height: var(--tap);
+  margin-top: 4px;
+  color: var(--primary);
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-user-select: none; user-select: none;
+}
