@@ -4,7 +4,7 @@
 // - Requests an Apps Script (POST) werden nie angefasst.
 // Bei Änderungen an der Datei-Liste CACHE_VERSION erhöhen.
 
-const CACHE_VERSION = 'v6';
+const CACHE_VERSION = 'v7';
 const SHELL_CACHE = `docscan-shell-${CACHE_VERSION}`;
 const LIB_CACHE = 'docscan-libs-v1';
 
@@ -58,7 +58,12 @@ self.addEventListener('fetch', (event) => {
 async function networkFirst(req) {
   const cache = await caches.open(SHELL_CACHE);
   try {
-    const res = await fetch(req);
+    // „no-cache“: beim Server nachfragen statt den 10-Minuten-HTTP-Cache von
+    // GitHub Pages zu nutzen – so kommen Updates sofort an (unverändert = 304, schnell).
+    // Navigations-Requests lassen sich nicht mit Optionen kopieren → über die URL.
+    const res = req.mode === 'navigate'
+      ? await fetch(req.url, { cache: 'no-cache', credentials: 'same-origin' })
+      : await fetch(req, { cache: 'no-cache' });
     if (res.ok) cache.put(req, res.clone());
     return res;
   } catch (err) {

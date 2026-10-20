@@ -1283,7 +1283,18 @@
     });
 
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('sw.js').catch((err) => console.warn('Service Worker:', err));
+      // Neue Version übernommen → einmal neu laden, damit sie sofort sichtbar ist.
+      // Nicht beim allerersten Start und nicht mitten in einem Scan.
+      const hatteVersion = !!navigator.serviceWorker.controller;
+      let neuGeladen = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (!hatteVersion || neuGeladen || scan.seiten.length || scan.laeuft) return;
+        neuGeladen = true;
+        location.reload();
+      });
+      navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' })
+        .then((reg) => reg.update())
+        .catch((err) => console.warn('Service Worker:', err));
     }
   }
 
