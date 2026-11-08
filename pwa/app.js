@@ -758,17 +758,29 @@
     return qrPromise;
   }
 
+  /** Nur der Firmenname – Adresse (Straße + Nr., PLZ, Postfach) und alles nach der Rechtsform fällt weg. */
+  function firmenname(s) {
+    s = String(s || '').replace(/\s+/g, ' ').trim();
+    const adresse = /[\s,]+(?:[A-ZÄÖÜa-zäöüß.\-]+\s?(?:straße|strasse|str\.|weg|platz|allee|gasse|ring|damm|ufer|chaussee|markt)\s*\d|\d{5}\b|postfach\b)/i.exec(s);
+    if (adresse && adresse.index >= 2) s = s.slice(0, adresse.index);
+    const rechtsform = /^(.*?\b(?:gmbh\s*&\s*co\.?\s*(?:kg|ohg)|gmbh|ag|kgaa|kg|ohg|ug(?:\s*\(haftungsbeschränkt\))?|mbh|gbr|se|e\.\s?k\.|e\.\s?v\.))(?=[\s,·|]|$)/i.exec(s);
+    if (rechtsform) s = rechtsform[1];
+    return s.replace(/[,;:·•|–-]+$/, '').trim();
+  }
+
+  /** Verwendungszweck: gespeichertes Feld, sonst Rechnungsnummer, sonst leer (nie Name/Adresse). */
+  const zweckFuer = (d) => d.verwendungszweck || (d.rechnungsnr ? `Rechnung ${d.rechnungsnr}` : '');
+
   /** EPC069-12 („GiroCode“), Version 002, UTF-8, BIC optional. */
   function epcDaten(d) {
     const einzeilig = (s, max) => String(s || '').replace(/\s+/g, ' ').trim().slice(0, max);
-    const zweck = d.rechnungsnr ? `Rechnung ${d.rechnungsnr}` : d.titel;
     return [
       'BCD', '002', '1', 'SCT', '',
-      einzeilig(d.absender || d.titel || 'Empfänger', 70),
+      einzeilig(firmenname(d.absender) || 'Empfänger', 70),
       String(d.iban).replace(/\s/g, '').toUpperCase(),
       `EUR${d.betrag.toFixed(2)}`,
       '', '',
-      einzeilig(zweck, 140)
+      einzeilig(zweckFuer(d), 140)
     ].join('\n');
   }
 
@@ -786,11 +798,12 @@
         <div class="girocode-qr">${qr.createSvgTag({ cellSize: 4, margin: 4, scalable: true, alt: 'GiroCode' })}</div>
         <p class="muted girocode-hint">In der Banking-App „Fotoüberweisung“ bzw. „GiroCode scannen“ wählen. Vor dem Absenden bitte Empfänger und Betrag prüfen.</p>
         <dl class="facts">
-          <dt>Empfänger</dt><dd>${esc(d.absender || d.titel)}</dd>
+          <dt>Empfänger</dt><dd>${esc(firmenname(d.absender) || '–')}</dd>
           <dt>IBAN</dt><dd>${esc(fmtIban(d.iban))}</dd>
           <dt>Betrag</dt><dd>${esc(fmtEuro(d.betrag))}</dd>
-          <dt>Zweck</dt><dd>${esc(d.rechnungsnr ? `Rechnung ${d.rechnungsnr}` : d.titel)}</dd>
-        </dl>`;
+          <dt>Zweck</dt><dd>${zweckFuer(d) ? esc(zweckFuer(d)) : '<span class="muted">– fehlt</span>'}</dd>
+        </dl>
+        ${zweckFuer(d) ? '' : '<p class="notice notice-warn">Kein Verwendungszweck erkannt. Bitte über „Angaben korrigieren“ ergänzen (z. B. Rechnungs- und Kundennummer) oder in der Banking-App eintragen.</p>'}`;
     } catch (err) {
       box.innerHTML = '<p class="notice notice-error">Der GiroCode konnte nicht erstellt werden (keine Verbindung?).</p>';
     }
@@ -861,6 +874,7 @@
       ['Betrag', typeof d.betrag === 'number' ? esc(fmtEuro(d.betrag)) : ''],
       ['Fällig am', d.faellig_am ? esc(fmtDatum(d.faellig_am)) + (geschaetzt ? ' <span class="muted">(geschätzt)</span>' : '') : ''],
       ['Rechnungsnr.', esc(d.rechnungsnr)],
+      ['Verwendungszweck', esc(d.verwendungszweck)],
       ['IBAN', esc(fmtIban(d.iban))],
       ['Status', esc(d.status)],
       ['Bezahlt', d.bezahlt_am ? esc(fmtDatum(d.bezahlt_am)) + (d.bezahlt_von ? ` von ${esc(d.bezahlt_von)}` : '') : ''],
@@ -888,6 +902,8 @@
         <input class="input" id="f-faellig" name="faellig_am" type="date" value="${esc(alsDatumsfeld(d.faellig_am))}">
         <label class="field-label" for="f-rnr">Rechnungsnummer</label>
         <input class="input" id="f-rnr" name="rechnungsnr" maxlength="100" value="${esc(d.rechnungsnr)}">
+        <label class="field-label" for="f-zweck">Verwendungszweck</label>
+        <input class="input" id="f-zweck" name="verwendungszweck" maxlength="140" placeholder="z. B. Rechnung 123, Kd-Nr. 456" value="${esc(d.verwendungszweck)}">
         <label class="field-label" for="f-iban">IBAN</label>
         <input class="input" id="f-iban" name="iban" autocapitalize="characters" autocorrect="off" spellcheck="false" value="${esc(fmtIban(d.iban))}">
         <p class="form-error" id="edit-error" role="alert" hidden></p>
@@ -907,6 +923,7 @@
       betrag: alsBetragsfeld(d.betrag),
       faellig_am: alsDatumsfeld(d.faellig_am),
       rechnungsnr: d.rechnungsnr || '',
+      verwendungszweck: d.verwendungszweck || '',
       iban: fmtIban(d.iban)
     });
     btn.addEventListener('click', () => { form.hidden = false; btn.hidden = true; $('#f-kategorie').focus(); });

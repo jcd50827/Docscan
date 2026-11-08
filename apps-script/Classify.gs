@@ -31,6 +31,8 @@ function analysiereText_(text, regeln) {
   var betrag = extrahiereBetrag_(text);
   var iban = extrahiereIban_(text);
   var rechnungsnr = extrahiereRechnungsnr_(text);
+  var kundennr = extrahiereKundennr_(text);
+  var projektnr = extrahiereProjektnr_(text);
   var faellig = extrahiereFaelligkeit_(text);
   var geschaetzt = false;
   if (!faellig && (klasse.kategorie === 'Rechnung' || klasse.kategorie === 'Mahnung')) {
@@ -49,6 +51,9 @@ function analysiereText_(text, regeln) {
     faelligGeschaetzt: geschaetzt,
     iban: iban,
     rechnungsnr: rechnungsnr,
+    kundennr: kundennr,
+    projektnr: projektnr,
+    verwendungszweck: extrahiereVerwendungszweck_(text, rechnungsnr, kundennr, projektnr),
     ocr_text_kurz: text.replace(/\s+/g, ' ').trim().substring(0, 500),
     fingerprint: fingerprint_(text, iban, betrag, rechnungsnr)
   };
@@ -305,6 +310,46 @@ function extrahiereRechnungsnr_(text) {
   return '';
 }
 
+/** Kunden-Nr. / Kundennummer / Kd.-Nr. / Debitor; muss eine Ziffer enthalten. */
+function extrahiereKundennr_(text) {
+  return nummerNach_(text, /(?:kunden\s?-?\s?(?:nr|nummer|no)\.?|kd\.?\s?-?\s?nr\.?|debitor(?:en)?\s?-?\s?(?:nr\.?|nummer)?|ihre\s+kundennummer)/i);
+}
+
+/** Projekt-/Auftrags-/Objekt-/Vorgangsnummer, Bauvorhaben; muss eine Ziffer enthalten. */
+function extrahiereProjektnr_(text) {
+  return nummerNach_(text, /(?:projekt\s?-?\s?(?:nr|nummer|no)?\.?|auftrags?\s?-?\s?(?:nr|nummer|no)\.?|objekt\s?-?\s?(?:nr|nummer)\.?|vorgangs?\s?-?\s?(?:nr|nummer)\.?|bauvorhaben(?:\s?-?\s?nr\.?)?|kommission(?:s\s?-?\s?nr\.?)?)/i);
+}
+
+/** Erste Nummer (mit mind. einer Ziffer) direkt hinter einem Stichwort. */
+function nummerNach_(text, stichwort) {
+  var re = new RegExp(stichwort.source + '\\s*[:#]?\\s*([A-Z0-9][A-Z0-9\\-\\/.]{1,30})', 'gi');
+  var m;
+  while ((m = re.exec(String(text || '')))) {
+    var nr = m[1].replace(/[.\-\/]+$/, '');
+    if (/\d/.test(nr)) return nr;
+  }
+  return '';
+}
+
+/**
+ * Verwendungszweck für die Überweisung: steht auf der Rechnung ausdrücklich
+ * „Verwendungszweck: …“ (mit einer Nummer darin), wird das übernommen;
+ * sonst aus Rechnungs-, Kunden- und Projektnummer zusammengesetzt. Sonst leer.
+ */
+function extrahiereVerwendungszweck_(text, rechnungsnr, kundennr, projektnr) {
+  var re = /verwendungszweck\s*[:\-]?\s*([^\n]{3,140})/gi;
+  var m;
+  while ((m = re.exec(String(text || '')))) {
+    var z = m[1].replace(/\s+/g, ' ').trim();
+    if (/\d/.test(z) && !/^(bitte|die|den|der|ihre|unbedingt|immer|stets|angeben)\b/i.test(z)) return z.substring(0, 140);
+  }
+  var teile = [];
+  if (rechnungsnr) teile.push('Rechnung ' + rechnungsnr);
+  if (kundennr && kundennr !== rechnungsnr) teile.push('Kd-Nr. ' + kundennr);
+  if (projektnr && projektnr !== rechnungsnr && projektnr !== kundennr) teile.push('Projekt ' + projektnr);
+  return teile.join(', ').substring(0, 140);
+}
+
 var FIRMEN_MERKMAL = /\b(gmbh|ag|kg|ohg|ug|mbh|gbr|se|kgaa|stadtwerke|versicherung|versicherungen|sparkasse|bank|volksbank|finanzamt|krankenkasse|aok|barmer|telekom|vodafone|stadt|gemeinde|landkreis|landratsamt|bürgeramt|rundfunk|beitragsservice)\b|e\.\s?v\./i;
 
 // Rechtsformen – damit wird zusätzlich die Fußzeile durchsucht („Muster GmbH | Sitz: …“).
@@ -370,8 +415,17 @@ function lesbareZeile_(z) {
   return buchstaben >= 3 && buchstaben / zeichen >= 0.5;
 }
 
+/**
+ * Nur der Firmenname: alles ab Adresse (Straße mit Hausnummer, PLZ, Postfach)
+ * und alles nach der Rechtsform (GmbH, AG, GmbH & Co. KG, e.V. …) fällt weg.
+ */
 function absenderKuerzen_(s) {
-  return s.trim().replace(/[,;:·•|–-]+$/, '').trim().substring(0, 60);
+  s = String(s || '').replace(/\s+/g, ' ').trim();
+  var adresse = /[\s,]+(?:[A-ZÄÖÜa-zäöüß.\-]+\s?(?:straße|strasse|str\.|weg|platz|allee|gasse|ring|damm|ufer|chaussee|markt)\s*\d|\d{5}\b|postfach\b)/i.exec(s);
+  if (adresse && adresse.index >= 2) s = s.substring(0, adresse.index);
+  var rechtsform = /^(.*?\b(?:gmbh\s*&\s*co\.?\s*(?:kg|ohg)|gmbh|ag|kgaa|kg|ohg|ug(?:\s*\(haftungsbeschränkt\))?|mbh|gbr|se|e\.\s?k\.|e\.\s?v\.))(?=[\s,·|]|$)/i.exec(s);
+  if (rechtsform) s = rechtsform[1];
+  return s.replace(/[,;:·•|–-]+$/, '').trim().substring(0, 60);
 }
 
 /**
@@ -477,6 +531,19 @@ function testClassify() {
       erwartet: { kategorie: 'Rechnung', betrag: 284.52 }
     },
     {
+      name: 'Adresse in der Absenderzeile, Kunden- und Projektnummer',
+      text: 'Abfluss ASS GmbH Industriestraße 12 50667 Köln\nHerrn Max Muster\nRechnung\nRechnungsnummer: 2025-118\n' +
+        'Kundennummer: 40711\nProjekt-Nr.: P-2291\nGesamtbetrag 412,30 €\nMwSt 19 %',
+      erwartet: { kategorie: 'Rechnung', absender: 'Abfluss ASS GmbH', betrag: 412.3,
+        verwendungszweck: 'Rechnung 2025-118, Kd-Nr. 40711, Projekt P-2291' }
+    },
+    {
+      name: 'Ausdrücklicher Verwendungszweck',
+      text: 'Muster Sanitär KG, Am Ring 3, 12345 Ort\nRechnung Nr. 77\nzu zahlen 99,00 €\n' +
+        'Bitte geben Sie als Verwendungszweck unbedingt an:\nVerwendungszweck: KD 4711 / RE 77\nMwSt',
+      erwartet: { kategorie: 'Rechnung', absender: 'Muster Sanitär KG', verwendungszweck: 'KD 4711 / RE 77' }
+    },
+    {
       name: 'Sonstiges',
       text: 'Liebe Oma,\nvielen Dank für das schöne Wochenende!\nDeine Lena',
       erwartet: { kategorie: 'Sonstiges', absender: 'Liebe Oma' }
@@ -490,7 +557,8 @@ function testClassify() {
     var e = analysiereText_(f.text, regeln);
     var ist = {
       kategorie: e.kategorie, absender: e.absender, betrag: e.betrag, faellig: fmt(e.faellig_am),
-      geschaetzt: e.faelligGeschaetzt, iban: e.iban, rechnungsnr: e.rechnungsnr
+      geschaetzt: e.faelligGeschaetzt, iban: e.iban, rechnungsnr: e.rechnungsnr,
+      verwendungszweck: e.verwendungszweck
     };
     var abweichungen = Object.keys(f.erwartet).filter(function (k) { return ist[k] !== f.erwartet[k]; });
     if (abweichungen.length) fehler++;

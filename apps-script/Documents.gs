@@ -37,6 +37,7 @@ function actionUpload_(nutzer, body) {
     faellig_am: erkannt.faellig_am,
     iban: erkannt.iban,
     rechnungsnr: erkannt.rechnungsnr,
+    verwendungszweck: erkannt.verwendungszweck,
     status: ZAHLUNGS_KATEGORIEN.indexOf(erkannt.kategorie) >= 0 ? 'offen' : 'erledigt',
     bezahlt_am: '',
     bezahlt_von: '',
@@ -61,7 +62,9 @@ function actionUpload_(nutzer, body) {
     doc.drive_url = datei.getUrl();
 
     try {
-      appendRow_(getSheet_('Dokumente'), doc);
+      var sheet = getSheet_('Dokumente');
+      stelleSpalteSicher_(sheet, 'verwendungszweck'); // für Sheets aus der Zeit vor dieser Spalte
+      appendRow_(sheet, doc);
     } catch (err) {
       datei.setTrashed(true); // keine verwaiste PDF ohne Sheet-Eintrag
       throw err;
@@ -95,6 +98,10 @@ function actionUpdate_(nutzer, body) {
   ['titel', 'absender', 'rechnungsnr'].forEach(function (k) {
     if (has_(f, k)) neu[k] = bereinigeText_(String(f[k] == null ? '' : f[k]), 100);
   });
+  if (has_(f, 'verwendungszweck')) {
+    neu.verwendungszweck = bereinigeText_(String(f.verwendungszweck == null ? '' : f.verwendungszweck), 140);
+    stelleSpalteSicher_(getSheet_('Dokumente'), 'verwendungszweck');
+  }
   if (has_(f, 'notiz')) neu.notiz = bereinigeText_(String(f.notiz == null ? '' : f.notiz), 500);
   if (has_(f, 'betrag')) neu.betrag = betragEingabe_(f.betrag);
   if (has_(f, 'faellig_am')) neu.faellig_am = datumEingabe_(f.faellig_am);
@@ -206,11 +213,11 @@ function actionExportCsv_(nutzer, body) {
     .sort(function (a, b) { return a.erstellt_am - b.erstellt_am; });
 
   var kopf = ['Hochgeladen am', 'Kategorie', 'Titel', 'Absender', 'Betrag (EUR)', 'Fällig am', 'Status',
-    'Bezahlt am', 'Bezahlt von', 'IBAN', 'Rechnungsnr.', 'Hochgeladen von', 'Notiz', 'PDF'];
+    'Bezahlt am', 'Bezahlt von', 'IBAN', 'Rechnungsnr.', 'Verwendungszweck', 'Hochgeladen von', 'Notiz', 'PDF'];
   var zeilen = doks.map(function (d) {
     return [datum(d.erstellt_am), d.kategorie, d.titel, d.absender,
       typeof d.betrag === 'number' ? d.betrag.toFixed(2).replace('.', ',') : '',
-      datum(d.faellig_am), d.status, datum(d.bezahlt_am), d.bezahlt_von, d.iban, d.rechnungsnr,
+      datum(d.faellig_am), d.status, datum(d.bezahlt_am), d.bezahlt_von, d.iban, d.rechnungsnr, d.verwendungszweck,
       d.hochgeladen_von, d.notiz, d.drive_url];
   });
   var csv = [kopf].concat(zeilen).map(function (z) { return z.map(csvZelle_).join(';'); }).join('\r\n');
@@ -237,6 +244,13 @@ function findeDokument_(id) {
   var treffer = readDocuments_().filter(function (d) { return d.id === String(id); });
   if (!treffer.length) throw fehler_('Das Dokument wurde nicht gefunden.');
   return treffer[0];
+}
+
+/** Hängt eine fehlende Spalte hinten an die Kopfzeile an (für ältere Sheets). */
+function stelleSpalteSicher_(sheet, name) {
+  var breite = sheet.getLastColumn();
+  var kopf = sheet.getRange(1, 1, 1, breite).getValues()[0].map(function (h) { return String(h).trim(); });
+  if (kopf.indexOf(name) < 0) sheet.getRange(1, breite + 1).setValue(name).setFontWeight('bold');
 }
 
 /** Schreibt einzelne Felder in eine Zeile (Spalten über die Kopfzeile). */
@@ -388,6 +402,7 @@ function readDocuments_() {
         faellig_am: d.faellig_am instanceof Date ? d.faellig_am : null,
         iban: String(d.iban || ''),
         rechnungsnr: String(d.rechnungsnr || ''),
+        verwendungszweck: String(d.verwendungszweck || ''),
         status: String(d.status || ''),
         bezahlt_am: d.bezahlt_am instanceof Date ? d.bezahlt_am : null,
         bezahlt_von: String(d.bezahlt_von || ''),

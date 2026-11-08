@@ -10,7 +10,7 @@ var SCHEMA = {
     'id', 'erstellt_am', 'hochgeladen_von', 'kategorie', 'titel', 'absender',
     'betrag', 'faellig_am', 'iban', 'rechnungsnr', 'status', 'bezahlt_am',
     'bezahlt_von', 'drive_file_id', 'drive_url', 'ocr_text_kurz', 'fingerprint',
-    'geloescht', 'notiz'
+    'geloescht', 'notiz', 'verwendungszweck'
   ],
   Log: ['zeitstempel', 'name', 'aktion', 'dokument_id'],
   Regeln: ['kategorie', 'schluesselwort', 'gewicht']

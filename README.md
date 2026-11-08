@@ -114,6 +114,8 @@ Die App selbst (GitHub Pages) aktualisiert sich automatisch. Das Apps Script mus
 4. **Bereitstellen → Bereitstellungen verwalten → Bearbeiten (Stift) → Version: „Neue Version“ → Bereitstellen.**
    Wichtig: *nicht* „Neue Bereitstellung“, sonst ändert sich die URL.
 
+**Update „Verwendungszweck & Empfänger“ ändert:** [`Classify.gs`](https://raw.githubusercontent.com/jcd50827/Docscan/main/apps-script/Classify.gs), [`Documents.gs`](https://raw.githubusercontent.com/jcd50827/Docscan/main/apps-script/Documents.gs) und [`Setup.gs`](https://raw.githubusercontent.com/jcd50827/Docscan/main/apps-script/Setup.gs). Die neue Spalte `verwendungszweck` im Tab **Dokumente** wird beim nächsten Upload automatisch angelegt.
+
 **Meilenstein 5 ändert:** [`Code.gs`](https://raw.githubusercontent.com/jcd50827/Docscan/main/apps-script/Code.gs), [`Documents.gs`](https://raw.githubusercontent.com/jcd50827/Docscan/main/apps-script/Documents.gs) und [`Setup.gs`](https://raw.githubusercontent.com/jcd50827/Docscan/main/apps-script/Setup.gs); **neu anlegen:** [`Reminders.gs`](https://raw.githubusercontent.com/jcd50827/Docscan/main/apps-script/Reminders.gs) (links **+ → Skript**, Name `Reminders`).
 
 **Einmalig nach Meilenstein 5 – Erinnerungen einrichten:** Im Script-Editor die Funktion **`setup`** wählen → **Ausführen** → die neuen Berechtigungen (E-Mails senden, Trigger verwalten) erlauben, **alle** Häkchen setzen. Damit wird die tägliche Erinnerung um 8 Uhr angelegt. Zum Ausprobieren im Sheet **DocScan → Erinnerungs-Mail jetzt senden** (es kommt nur eine Mail, wenn eine offene Rechnung überfällig oder in den nächsten 3 Tagen fällig ist). Den Trigger siehst du im Script-Editor links unter **Trigger** (Uhr-Symbol).
@@ -242,7 +244,7 @@ Alle Requests: `POST` an die Web-App-URL, `Content-Type: text/plain;charset=utf-
 |---|---|---|
 | `login` | alle | `{ ok, name, rolle }` |
 | `upload` | alle | Payload `{ pdfBase64, seiten, titelVorschlag? }` → `{ ok, dokument }` inkl. erkannter Felder, `faelligGeschaetzt`, `textErkannt`, `duplikatVon` |
-| `update` | editor | Payload `{ id, felder: { kategorie, titel, absender, betrag, faellig_am (JJJJ-MM-TT), iban, rechnungsnr, notiz } }` → `{ ok, dokument }`; PDF wird umbenannt/verschoben |
+| `update` | editor | Payload `{ id, felder: { kategorie, titel, absender, betrag, faellig_am (JJJJ-MM-TT), iban, rechnungsnr, verwendungszweck, notiz } }` → `{ ok, dokument }`; PDF wird umbenannt/verschoben |
 | `listMine` | alle | `{ ok, dokumente: [...] }` (eigene Uploads, 7 Tage) |
 | `list` | editor | Payload `{ filter: { status: offen\|bezahlt\|erledigt\|alle, kategorie, suche, id } }` → `{ ok, dokumente, gesamt }` (offene nach Fälligkeit, max. 300) |
 | `setStatus` | editor | Payload `{ id, status }` → `{ ok, dokument }`; „bezahlt“ setzt `bezahlt_am`/`bezahlt_von` |
