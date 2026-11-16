@@ -5,7 +5,7 @@
  */
 
 var SCHEMA = {
-  Nutzer: ['name', 'code_hash', 'rolle', 'aktiv', 'erstellt_am', 'email'],
+  Nutzer: ['name', 'code_hash', 'rolle', 'aktiv', 'erstellt_am', 'email', 'zuletzt_gesehen'],
   Dokumente: [
     'id', 'erstellt_am', 'hochgeladen_von', 'kategorie', 'titel', 'absender',
     'betrag', 'faellig_am', 'iban', 'rechnungsnr', 'status', 'bezahlt_am',
@@ -13,7 +13,8 @@ var SCHEMA = {
     'geloescht', 'notiz', 'verwendungszweck'
   ],
   Log: ['zeitstempel', 'name', 'aktion', 'dokument_id'],
-  Regeln: ['kategorie', 'schluesselwort', 'gewicht']
+  Regeln: ['kategorie', 'schluesselwort', 'gewicht'],
+  Geraete: ['name', 'endpoint', 'erstellt_am', 'geraet', 'aktiv']
 };
 
 var STANDARD_REGELN = {

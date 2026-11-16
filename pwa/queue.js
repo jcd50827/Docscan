@@ -5,6 +5,7 @@
   'use strict';
 
   const DB_NAME = 'docscan';
+  const DB_VERSION = 2;          // v2: Store „kv“ (Zugang für den Service Worker, Push)
   const STORE = 'uploads';
   let dbPromise = null;
 
@@ -13,12 +14,16 @@
       dbPromise = new Promise((resolve, reject) => {
         let req;
         try {
-          req = indexedDB.open(DB_NAME, 1);
+          req = indexedDB.open(DB_NAME, DB_VERSION);
         } catch (err) {
           reject(err);
           return;
         }
-        req.onupgradeneeded = () => req.result.createObjectStore(STORE, { keyPath: 'id', autoIncrement: true });
+        req.onupgradeneeded = () => {
+          const db = req.result;
+          if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: 'id', autoIncrement: true });
+          if (!db.objectStoreNames.contains('kv')) db.createObjectStore('kv');
+        };
         req.onsuccess = () => resolve(req.result);
         req.onerror = () => reject(req.error);
       }).catch((err) => {
@@ -29,11 +34,11 @@
     return dbPromise;
   }
 
-  async function transaktion(modus, fn) {
+  async function transaktion(modus, fn, store = STORE) {
     const db = await oeffneDb();
     return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE, modus);
-      const ergebnis = fn(tx.objectStore(STORE));
+      const tx = db.transaction(store, modus);
+      const ergebnis = fn(tx.objectStore(store));
       tx.oncomplete = () => resolve(ergebnis && 'result' in ergebnis ? ergebnis.result : undefined);
       tx.onerror = () => reject(tx.error);
       tx.onabort = () => reject(tx.error || new Error('Abgebrochen'));
@@ -87,4 +92,10 @@
   };
 
   window.Queue = Queue;
+
+  // Kleiner Schlüssel-Wert-Speicher, den auch der Service Worker liest (Zugang für Push).
+  window.DocDb = {
+    set: (key, wert) => transaktion('readwrite', (s) => s.put(wert, key), 'kv').catch(() => {}),
+    loeschen: (key) => transaktion('readwrite', (s) => s.delete(key), 'kv').catch(() => {})
+  };
 })();

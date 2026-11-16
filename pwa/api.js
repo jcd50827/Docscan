@@ -58,6 +58,11 @@
     setStatus: (code, payload) => call('setStatus', code, payload),
     delete: (code, payload) => call('delete', code, payload),
     exportCsv: (code, payload) => call('exportCsv', code, payload),
-    stats: (code) => call('stats', code)
+    stats: (code) => call('stats', code),
+    markSeen: (code) => call('markSeen', code),
+    pushKey: (code) => call('pushKey', code),
+    pushSubscribe: (code, payload) => call('pushSubscribe', code, payload),
+    pushUnsubscribe: (code, payload) => call('pushUnsubscribe', code, payload),
+    pushTest: (code) => call('pushTest', code)
   };
 })();

@@ -24,6 +24,11 @@ function getActions_() {
     setStatus:{ rolle: 'editor', schreibend: true,  fn: actionSetStatus_ },
     delete:   { rolle: 'editor', schreibend: true,  fn: actionDelete_ },
     exportCsv:{ rolle: 'editor', schreibend: false, fn: actionExportCsv_ },
+    markSeen: { rolle: 'editor', schreibend: true,  fn: actionMarkSeen_ },
+    pushKey:  { rolle: 'editor', schreibend: false, fn: actionPushKey_ },
+    pushSubscribe:   { rolle: 'editor', schreibend: true, fn: actionPushSubscribe_ },
+    pushUnsubscribe: { rolle: null,     schreibend: true, fn: actionPushUnsubscribe_ },
+    pushTest: { rolle: 'editor', schreibend: false, fn: actionPushTest_ },
     listMine: { rolle: null,     schreibend: false, fn: actionListMine_ },
     stats:    { rolle: 'editor', schreibend: false, fn: actionStats_ }
   };

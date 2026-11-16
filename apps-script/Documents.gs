@@ -49,7 +49,7 @@ function actionUpload_(nutzer, body) {
     notiz: ''
   };
 
-  return mitLock_(function () {
+  var antwort = mitLock_(function () {
     var duplikat = findeDuplikat_(doc.fingerprint);
     var notizen = [];
     if (duplikat) notizen.push('Mögliches Duplikat von ' + duplikat.id);
@@ -79,6 +79,9 @@ function actionUpload_(nutzer, body) {
     }) : null;
     return { dokument: antwort };
   });
+  // Editoren benachrichtigen (Fehler dabei brechen den Upload nicht ab).
+  sendePushAnEditoren_(nutzer.name);
+  return antwort;
 }
 
 /**
@@ -162,7 +165,15 @@ function actionList_(nutzer, body) {
     }
   }
   doks.sort(listenSortierung_);
-  return { dokumente: doks.slice(0, MAX_LISTE).map(toClient_), gesamt: doks.length };
+  var seit = zuletztGesehen_(nutzer.name);
+  return {
+    dokumente: doks.slice(0, MAX_LISTE).map(function (d) {
+      var c = toClient_(d);
+      c.neu = istNeuFuer_(d, nutzer.name, seit);
+      return c;
+    }),
+    gesamt: doks.length
+  };
 }
 
 function listenSortierung_(a, b) {
@@ -359,7 +370,7 @@ function actionListMine_(nutzer) {
 }
 
 /** Übersicht für Editoren: Summe offen, Anzahl überfällig, nächste Fälligkeiten. */
-function actionStats_() {
+function actionStats_(nutzer) {
   var heute = startOfDay_(new Date());
   var bis = new Date(heute.getTime() + (TAGE_NAECHSTE_FAELLIGKEITEN + 1) * 24 * 3600 * 1000);
 
@@ -377,7 +388,17 @@ function actionStats_() {
   });
   naechste.sort(function (a, b) { return a.faellig_am - b.faellig_am; });
 
+  // Neu seit dem letzten Öffnen der Tracking-Liste (von anderen hochgeladen) – für Zahl am Symbol und Push-Text.
+  var seit = zuletztGesehen_(nutzer.name);
+  var neue = readDocuments_()
+    .filter(function (d) { return istNeuFuer_(d, nutzer.name, seit); })
+    .sort(function (a, b) { return b.erstellt_am - a.erstellt_am; });
+
   return {
+    neu: neue.length,
+    neueste: neue.slice(0, 3).map(function (d) {
+      return { id: d.id, kategorie: d.kategorie, absender: d.absender, titel: d.titel, betrag: d.betrag, hochgeladen_von: d.hochgeladen_von };
+    }),
     summeOffen: Math.round(summeOffen * 100) / 100,
     anzahlOffen: offen.length,
     anzahlUeberfaellig: ueberfaellig,

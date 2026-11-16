@@ -25,7 +25,8 @@
   const state = {
     code: Store.get(KEY_CODE),
     nutzer: parseJson(Store.get(KEY_NUTZER)),
-    renderToken: 0
+    renderToken: 0,
+    neu: 0            // neue Dokumente seit dem letzten Öffnen der Tracking-Liste (Editor)
   };
 
   function parseJson(text) {
@@ -37,9 +38,20 @@
     state.nutzer = nutzer;
     Store.set(KEY_CODE, code);
     Store.set(KEY_NUTZER, JSON.stringify(nutzer));
+    zugangFuerServiceWorker();
+  }
+
+  /** Der Service Worker braucht Code und API-Adresse, um bei einem Push die Zahl neuer Dokumente zu holen. */
+  function zugangFuerServiceWorker() {
+    if (state.code && window.DocDb && window.DOCSCAN_CONFIG) {
+      DocDb.set('zugang', { code: state.code, apiUrl: window.DOCSCAN_CONFIG.APPS_SCRIPT_URL });
+    }
   }
 
   function logout(meldung) {
+    if (state.code) pushAusschalten(state.code); // Gerät abmelden, solange der Code noch bekannt ist
+    if (window.DocDb) DocDb.loeschen('zugang');
+    zeigeNeu(0);
     state.code = null;
     state.nutzer = null;
     Store.remove(KEY_CODE);
@@ -111,6 +123,23 @@
     $('#menu-user').innerHTML =
       `<strong>${esc(state.nutzer.name)}</strong><span>${state.nutzer.rolle === 'editor' ? 'Editor' : 'Contributor'}</span>`;
     document.querySelectorAll('[data-rolle="editor"]').forEach((el) => { el.hidden = !isEditor(); });
+    zeigeNeu(state.neu);
+  }
+
+  /** Rote Zahl im Menü, auf „Zur Tracking-Liste“ und am App-Symbol. */
+  function zeigeNeu(n) {
+    state.neu = isEditor() ? Math.max(0, n || 0) : 0;
+    const text = state.neu > 99 ? '99+' : String(state.neu);
+    ['#menu-neu', '#liste-neu'].forEach((sel) => {
+      const el = $(sel);
+      if (el) { el.textContent = text; el.hidden = !state.neu; }
+    });
+    const punkt = $('#menu-punkt');
+    if (punkt) punkt.hidden = !state.neu;
+    try {
+      if (state.neu && navigator.setAppBadge) navigator.setAppBadge(state.neu).catch(() => {});
+      else if (!state.neu && navigator.clearAppBadge) navigator.clearAppBadge().catch(() => {});
+    } catch (err) { /* nicht unterstützt */ }
   }
 
   // -------------------------------------------------------------------------
@@ -298,7 +327,10 @@
         ${naechste.length ? `
           <h2>Bald fällig</h2>
           <ul class="cards">${naechste.map(faelligCard).join('')}</ul>` : ''}
-        <a href="#/liste" class="btn btn-secondary btn-block">Zur Tracking-Liste</a>`;
+        <a href="#/liste" class="btn btn-secondary btn-block btn-mit-zahl">Zur Tracking-Liste <span class="zahl" id="liste-neu" hidden></span></a>
+        <section class="push-box" id="push-box"></section>`;
+      zeigeNeu(s.neu || 0);
+      renderPushBox();
     } catch (err) {
       if (!veraltet(token)) handleApiError(err, box);
     }
@@ -850,6 +882,140 @@
   }
 
   // -------------------------------------------------------------------------
+  // Push-Benachrichtigungen (Editor)
+  // -------------------------------------------------------------------------
+  const KEY_PUSH_SYNC = 'docscan.pushSync';
+  const istIos = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const istAppModus = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  const geraetName = () => (istIos ? (/iPad/.test(navigator.userAgent) || navigator.maxTouchPoints > 1 && !/iPhone/.test(navigator.userAgent) ? 'iPad' : 'iPhone')
+    : /Android/.test(navigator.userAgent) ? 'Android' : 'Computer');
+
+  function swBereit() {
+    return Promise.race([
+      navigator.serviceWorker.ready,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Service Worker nicht bereit')), 4000))
+    ]);
+  }
+
+  /** 'an' | 'aus' | 'blockiert' | 'home' (iOS ohne Home-Bildschirm) | 'nein' (nicht unterstützt) */
+  async function pushZustand() {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+      return istIos && !istAppModus() ? 'home' : 'nein';
+    }
+    if (Notification.permission === 'denied') return 'blockiert';
+    try {
+      const reg = await swBereit();
+      const sub = await reg.pushManager.getSubscription();
+      return sub && Notification.permission === 'granted' ? 'an' : 'aus';
+    } catch (err) {
+      return 'aus';
+    }
+  }
+
+  async function renderPushBox() {
+    const box = $('#push-box');
+    if (!box || !isEditor()) return;
+    const zustand = await pushZustand();
+    if (!$('#push-box')) return;
+    const texte = {
+      an: '🔔 Benachrichtigungen sind auf diesem Gerät an.',
+      aus: 'Bei neuen Dokumenten eine Benachrichtigung und eine rote Zahl am App-Symbol bekommen.',
+      blockiert: 'Benachrichtigungen sind für DocScan blockiert. iPhone/iPad: Einstellungen → Mitteilungen → DocScan → „Mitteilungen erlauben“.',
+      home: 'Benachrichtigungen gibt es auf iPhone und iPad nur, wenn DocScan vom Home-Bildschirm aus geöffnet wird.',
+      nein: 'Dieser Browser unterstützt keine Benachrichtigungen.'
+    };
+    box.innerHTML = `
+      <h2>Benachrichtigungen</h2>
+      <p class="muted push-text">${texte[zustand]}</p>
+      ${zustand === 'aus' ? '<button type="button" class="btn btn-primary btn-block" id="push-an">🔔 Benachrichtigungen aktivieren</button>' : ''}
+      ${zustand === 'an' ? `<div class="push-aktionen">
+          <button type="button" class="btn btn-secondary" id="push-test">Test senden</button>
+          <button type="button" class="btn btn-ghost" id="push-aus">Ausschalten</button>
+        </div>` : ''}`;
+    const an = $('#push-an');
+    if (an) an.addEventListener('click', () => pushAktivieren(an));
+    const test = $('#push-test');
+    if (test) test.addEventListener('click', () => pushTesten(test));
+    const aus = $('#push-aus');
+    if (aus) {
+      aus.addEventListener('click', async () => {
+        aus.disabled = true;
+        await pushAusschalten(state.code);
+        toast('Benachrichtigungen sind aus.');
+        renderPushBox();
+      });
+    }
+  }
+
+  async function pushAktivieren(btn) {
+    btn.disabled = true;
+    btn.textContent = 'Wird eingerichtet …';
+    try {
+      // Muss direkt aus dem Tippen heraus passieren (sonst fragt iOS nicht).
+      const erlaubnis = await Notification.requestPermission();
+      if (erlaubnis !== 'granted') {
+        toast('Ohne Erlaubnis keine Benachrichtigungen.');
+        return renderPushBox();
+      }
+      const { schluessel } = await Api.pushKey(state.code);
+      const reg = await swBereit();
+      const alt = await reg.pushManager.getSubscription();
+      if (alt) await alt.unsubscribe().catch(() => {});
+      const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64urlZuBytes(schluessel) });
+      await Api.pushSubscribe(state.code, { subscription: sub.toJSON(), appUrl: location.origin + location.pathname, geraet: geraetName() });
+      Store.set(KEY_PUSH_SYNC, String(Date.now()));
+      zugangFuerServiceWorker();
+      toast('Benachrichtigungen sind an. Tipp: „Test senden“ ausprobieren.');
+    } catch (err) {
+      if (err.auth) return logout(err.message);
+      toast(err.offline ? 'Keine Verbindung – bitte später erneut versuchen.' : `Einrichten fehlgeschlagen: ${err.message}`);
+    }
+    renderPushBox();
+  }
+
+  async function pushTesten(btn) {
+    btn.disabled = true;
+    try {
+      await Api.pushTest(state.code);
+      toast('Test gesendet – die Benachrichtigung sollte gleich erscheinen.');
+    } catch (err) {
+      toast(err.offline ? 'Keine Verbindung.' : err.message);
+    }
+    btn.disabled = false;
+  }
+
+  /** Gerät abmelden (lokal und beim Server). Fehler werden ignoriert. */
+  async function pushAusschalten(code) {
+    try {
+      if (!('serviceWorker' in navigator)) return;
+      const reg = await swBereit();
+      const sub = await reg.pushManager.getSubscription();
+      if (!sub) return;
+      const endpoint = sub.endpoint;
+      await sub.unsubscribe().catch(() => {});
+      await Api.pushUnsubscribe(code, { endpoint }).catch(() => {});
+    } catch (err) { /* egal */ }
+    Store.remove(KEY_PUSH_SYNC);
+  }
+
+  /** Einmal pro Woche die Anmeldung beim Server auffrischen (falls das Gerät dort entfernt wurde). */
+  async function pushStillAuffrischen() {
+    if (!isEditor() || (await pushZustand()) !== 'an') return;
+    const zuletzt = Number(Store.get(KEY_PUSH_SYNC)) || 0;
+    if (Date.now() - zuletzt < 7 * 24 * 3600 * 1000) return;
+    try {
+      const sub = await (await swBereit()).pushManager.getSubscription();
+      await Api.pushSubscribe(state.code, { subscription: sub.toJSON(), appUrl: location.origin + location.pathname, geraet: geraetName() });
+      Store.set(KEY_PUSH_SYNC, String(Date.now()));
+    } catch (err) { /* nächstes Mal */ }
+  }
+
+  function b64urlZuBytes(b64) {
+    const roh = atob(b64.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (b64.length % 4)) % 4));
+    return Uint8Array.from(roh, (c) => c.charCodeAt(0));
+  }
+
+  // -------------------------------------------------------------------------
   // Dokument-Angaben anzeigen und bearbeiten (auch für die Detailansicht in M4)
   // -------------------------------------------------------------------------
   const KATEGORIEN = ['Rechnung', 'Mahnung', 'Vertrag', 'Bescheid', 'Info', 'Sonstiges'];
@@ -1045,6 +1211,10 @@
       liste.entfernt.clear();
       merkeDokumente(liste.dokumente);
       renderEintraege();
+      if (state.neu > 0 || liste.dokumente.some((d) => d.neu)) {
+        zeigeNeu(0);
+        Api.markSeen(state.code).catch(() => {});
+      }
     } catch (err) {
       if (!veraltet(token)) handleApiError(err, $('#doc-list'));
     }
@@ -1084,7 +1254,7 @@
               <input type="checkbox" data-pay="${esc(d.id)}" ${d.status === 'bezahlt' ? 'checked' : ''}>
             </label>` : ''}
           <div class="card-main">
-            <strong class="card-title">${esc(d.absender || d.titel)}</strong>
+            <strong class="card-title">${d.neu ? '<span class="neu-pill">Neu</span> ' : ''}${esc(d.absender || d.titel)}</strong>
             <span class="muted card-sub">${esc(unterzeile)}</span>
           </div>
           <div class="card-side">
@@ -1293,7 +1463,8 @@
     window.addEventListener('hashchange', route);
 
     route();
-    refreshSession().then(() => warteschlangeSenden());
+    zugangFuerServiceWorker();
+    refreshSession().then(() => { warteschlangeSenden(); pushStillAuffrischen(); });
     window.addEventListener('online', () => warteschlangeSenden());
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') warteschlangeSenden();

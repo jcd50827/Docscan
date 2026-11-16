@@ -30,11 +30,12 @@
     <a href="#/" class="topbar-title">DocScan</a>
     <button class="icon-btn" id="menu-btn" type="button" aria-label="Menü" aria-haspopup="true" aria-expanded="false">
       <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+      <span class="punkt" id="menu-punkt" hidden></span>
     </button>
     <div class="menu" id="menu" role="menu" hidden>
       <div class="menu-user" id="menu-user"></div>
       <a href="#/" role="menuitem" class="menu-item">Startseite</a>
-      <a href="#/liste" role="menuitem" class="menu-item" data-rolle="editor">Tracking-Liste</a>
+      <a href="#/liste" role="menuitem" class="menu-item" data-rolle="editor">Tracking-Liste <span class="zahl" id="menu-neu" hidden></span></a>
       <button type="button" role="menuitem" class="menu-item" id="logout-btn">Abmelden</button>
     </div>
   </header>

@@ -30,7 +30,7 @@ Du brauchst ein Google-Konto und ein GitHub-Konto (beides kostenlos). Programmie
    - Den Inhalt der Datei aus dem Repo komplett hineinkopieren.
    - Die vorhandene Datei `Code.gs` nicht neu anlegen, sondern ihren Inhalt ersetzen.
 
-   Aktuell sind das: `Code.gs`, `Auth.gs`, `Documents.gs`, `Setup.gs`, `Ocr.gs`, `Classify.gs`, `Reminders.gs`.
+   Aktuell sind das: `Code.gs`, `Auth.gs`, `Documents.gs`, `Setup.gs`, `Ocr.gs`, `Classify.gs`, `Reminders.gs`, `Push.gs`.
 4. Manifest-Datei übernehmen:
    - Links auf das Zahnrad **Projekteinstellungen** klicken und **„appsscript.json“-Manifestdatei im Editor anzeigen** anhaken.
    - Zurück im Editor die Datei `appsscript.json` öffnen und ihren Inhalt durch den aus [`apps-script/appsscript.json`](apps-script/appsscript.json) ersetzen.
@@ -113,6 +113,10 @@ Die App selbst (GitHub Pages) aktualisiert sich automatisch. Das Apps Script mus
 3. **Speichern**.
 4. **Bereitstellen → Bereitstellungen verwalten → Bearbeiten (Stift) → Version: „Neue Version“ → Bereitstellen.**
    Wichtig: *nicht* „Neue Bereitstellung“, sonst ändert sich die URL.
+
+**Update „Benachrichtigungen“ ändert:** [`Code.gs`](https://raw.githubusercontent.com/jcd50827/Docscan/main/apps-script/Code.gs), [`Documents.gs`](https://raw.githubusercontent.com/jcd50827/Docscan/main/apps-script/Documents.gs) und [`Setup.gs`](https://raw.githubusercontent.com/jcd50827/Docscan/main/apps-script/Setup.gs); **neu anlegen:** [`Push.gs`](https://raw.githubusercontent.com/jcd50827/Docscan/main/apps-script/Push.gs) (links **+ → Skript**, Name `Push`). Danach einmal die Funktion **`testPush`** ausführen und die neue Berechtigung („Verbindung zu einem externen Dienst herstellen“) erlauben – sonst können keine Benachrichtigungen verschickt werden. Dann neue Version bereitstellen.
+
+So bekommt ein Editor Benachrichtigungen (pro Gerät einmal): DocScan **vom Home-Bildschirm** öffnen (iPhone/iPad ab iOS 16.4) → Startseite ganz unten **🔔 Benachrichtigungen aktivieren** → erlauben → **Test senden**. Ab dann erscheint bei jedem Upload einer anderen Person ein Banner und eine rote Zahl am App-Symbol; beim Öffnen der Tracking-Liste verschwindet die Zahl. Angemeldete Geräte stehen im Tab **Geraete**.
 
 **Update „Verwendungszweck & Empfänger“ ändert:** [`Classify.gs`](https://raw.githubusercontent.com/jcd50827/Docscan/main/apps-script/Classify.gs), [`Documents.gs`](https://raw.githubusercontent.com/jcd50827/Docscan/main/apps-script/Documents.gs) und [`Setup.gs`](https://raw.githubusercontent.com/jcd50827/Docscan/main/apps-script/Setup.gs). Die neue Spalte `verwendungszweck` im Tab **Dokumente** wird beim nächsten Upload automatisch angelegt.
 
@@ -229,6 +233,7 @@ apps-script/         Google Apps Script (V8)
   Ocr.gs             Texterkennung über Drive-Konvertierung (+ testOcr)
   Classify.gs        Kategorisierung & Feldextraktion, regelbasiert (+ testClassify)
   Reminders.gs       Tägliche Mail-Erinnerung (Trigger 8 Uhr, + testErinnerung)
+  Push.gs            Push-Benachrichtigungen (Web Push, VAPID/ES256 in reinem JS, + testPush)
   Setup.gs           setup(), Menü, „Nutzer anlegen“
   appsscript.json    Manifest inkl. Drive API v3
 .github/workflows/pages.yml   Deployment von pwa/ auf GitHub Pages
@@ -250,6 +255,8 @@ Alle Requests: `POST` an die Web-App-URL, `Content-Type: text/plain;charset=utf-
 | `setStatus` | editor | Payload `{ id, status }` → `{ ok, dokument }`; „bezahlt“ setzt `bezahlt_am`/`bezahlt_von` |
 | `delete` | editor | Payload `{ id }` → `{ ok, id }`; Soft Delete (`geloescht` = TRUE), PDF bleibt im Drive |
 | `exportCsv` | editor | Payload `{ jahr }` → `{ ok, dateiname, csv, anzahl }` (Semikolon, Dezimalkomma, nach Upload-Datum) |
+| `markSeen` | editor | Tracking-Liste geöffnet → nichts mehr „neu“ (`stats.neu`, `list[].neu`) |
+| `pushKey` / `pushSubscribe` / `pushUnsubscribe` / `pushTest` | editor | Öffentlicher VAPID-Schlüssel, Gerät an-/abmelden (Tab `Geraete`), Test-Push an eigene Geräte |
 | `stats` | editor | `{ ok, summeOffen, anzahlOffen, anzahlUeberfaellig, naechsteFaelligkeiten }` |
 
 Fehler: `{ ok: false, error: "…" }`; bei ungültigem oder deaktiviertem Code zusätzlich `auth: true`, damit die App abmeldet. Nach 10 Fehlversuchen pro Code-Präfix ist dieser Präfix 15 Minuten gesperrt.
