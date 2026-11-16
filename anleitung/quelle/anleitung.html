@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>DocScan – Anleitung</title>
+<!-- Quelle der PDF-Anleitung. PDF erzeugen: node anleitung/quelle/pdf.js (siehe README in diesem Ordner). -->
+<style>
+  @page { size: A4; margin: 16mm 16mm 18mm 16mm; }
+  :root {
+    --blau: #1f5fbf; --blau-hell: #e8f0fc;
+    --text: #1a1f27; --grau: #5d6673; --linie: #dfe4eb;
+    --gelb: #fff6e0; --gelb-rand: #f0c35a; --gruen: #1e7a3a; --gruen-hell: #e6f4ea; --rot: #e53935;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { margin: 0; font-family: Inter, "Helvetica Neue", Arial, sans-serif; color: var(--text); font-size: 10.5pt; line-height: 1.5; }
+  h1, h2, h3 { margin: 0; line-height: 1.2; }
+  .seite { break-after: page; }
+  .seite:last-child { break-after: auto; }
+
+  /* Deckblatt */
+  .kopf { display: flex; align-items: center; gap: 18px; margin-bottom: 8mm; }
+  .kopf img { width: 64px; height: 64px; border-radius: 15px; }
+  .kopf h1 { font-size: 30pt; font-weight: 800; letter-spacing: -0.5px; }
+  .kopf p { margin: 2px 0 0; color: var(--grau); font-size: 12pt; }
+  .intro { font-size: 12pt; margin: 0 0 7mm; }
+  .zwei { display: grid; grid-template-columns: 1fr 1fr; gap: 6mm; }
+
+  .box { border: 1.5px solid var(--linie); border-radius: 12px; padding: 5mm 6mm; }
+  .box h3 { font-size: 12.5pt; margin-bottom: 3mm; display: flex; align-items: center; gap: 8px; }
+  .nr-klein { display: inline-flex; width: 22px; height: 22px; border-radius: 50%; background: var(--blau); color: #fff; font-size: 10pt; font-weight: 700; align-items: center; justify-content: center; flex-shrink: 0; }
+  .link { font-weight: 700; color: var(--blau); font-size: 12pt; word-break: break-all; }
+  .qr { width: 34mm; height: 34mm; margin: 3mm 0 1mm; display: block; }
+  .klein { color: var(--grau); font-size: 9.5pt; }
+  .code-feld { display: flex; gap: 6px; align-items: center; margin: 4mm 0 3mm; font-size: 16pt; font-weight: 700; color: var(--grau); }
+  .code-feld span.k { display: inline-block; width: 20mm; height: 11mm; border: 1.5px solid #b8c2cf; border-radius: 7px; background: #fafbfd; }
+  .name-feld { border-bottom: 1.5px solid #b8c2cf; height: 9mm; margin-top: 2mm; }
+
+  .geraete { margin-top: 7mm; }
+  .geraete h2 { font-size: 14pt; margin-bottom: 3mm; }
+  .geraet-liste { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4mm; }
+  .geraet { background: var(--blau-hell); border-radius: 12px; padding: 4mm 5mm; }
+  .geraet b { display: block; font-size: 11.5pt; }
+  .geraet span { color: var(--grau); font-size: 9.5pt; }
+  .geraet .seitenzahl { color: var(--blau); font-weight: 700; font-size: 10pt; margin-top: 1.5mm; display: block; }
+
+  /* Kapitel */
+  .kapitel-kopf { display: flex; align-items: center; gap: 12px; padding-bottom: 3mm; margin-bottom: 3mm; border-bottom: 3px solid var(--blau); }
+  .kapitel-kopf .icon { width: 40px; height: 40px; border-radius: 10px; background: var(--blau); display: flex; align-items: center; justify-content: center; }
+  .kapitel-kopf .icon svg { width: 24px; height: 24px; stroke: #fff; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .kapitel-kopf h2 { font-size: 20pt; font-weight: 800; }
+  .kapitel-kopf p { margin: 1px 0 0; color: var(--grau); }
+
+  .schritte { list-style: none; margin: 0; padding: 0; }
+  .schritt { display: grid; grid-template-columns: 34px 1fr; gap: 12px; padding: 2.3mm 0; border-bottom: 1px solid var(--linie); break-inside: avoid; }
+  .schritt:last-child { border-bottom: 0; }
+  .nr { width: 30px; height: 30px; border-radius: 50%; background: var(--blau); color: #fff; font-weight: 800; font-size: 12pt; display: flex; align-items: center; justify-content: center; }
+  .schritt h4 { margin: 3px 0 1px; font-size: 11.5pt; }
+  .schritt p { margin: 0; color: #333b47; }
+  .taste { display: inline-flex; align-items: center; gap: 5px; padding: 1px 8px; border: 1.3px solid #b8c2cf; border-radius: 6px; background: #f6f8fb; font-weight: 600; font-size: 9.5pt; white-space: nowrap; vertical-align: 1px; }
+  .taste svg { width: 13px; height: 13px; stroke: var(--blau); fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+  .zahl { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--rot); color: #fff; font-size: 8.5pt; font-weight: 700; vertical-align: 1px; }
+  .neu { display: inline-block; padding: 0 6px; border-radius: 9px; background: var(--rot); color: #fff; font-size: 8.5pt; font-weight: 700; vertical-align: 1px; }
+
+  .hinweis { margin: 4mm 0 0; padding: 4mm 5mm; border-radius: 10px; background: var(--gelb); border-left: 5px solid var(--gelb-rand); break-inside: avoid; }
+  .hinweis > b:first-child { display: block; margin-bottom: 1mm; }
+  .tipp { margin: 4mm 0 0; padding: 4mm 5mm; border-radius: 10px; background: var(--gruen-hell); border-left: 5px solid var(--gruen); break-inside: avoid; }
+  .tipp > b:first-child { display: block; margin-bottom: 1mm; }
+
+  .abschnitt { margin-top: 6mm; }
+  .abschnitt h3 { font-size: 14pt; margin-bottom: 2mm; break-after: avoid; }
+
+  table { width: 100%; border-collapse: collapse; margin-top: 3mm; }
+  tr { break-inside: avoid; }
+  th, td { text-align: left; vertical-align: top; padding: 1.7mm 3mm; border-bottom: 1px solid var(--linie); }
+  th { background: var(--blau-hell); font-size: 9.5pt; text-transform: uppercase; letter-spacing: 0.4px; color: #2b4a7a; }
+  td:first-child { font-weight: 600; width: 56%; }
+  .ja { color: var(--gruen); font-weight: 700; }
+  .nein { color: #9aa3ae; }
+
+  .faq { margin-top: 2mm; }
+  .frage { padding: 2mm 0; border-bottom: 1px solid var(--linie); break-inside: avoid; }
+  .frage h4 { margin: 0 0 1mm; font-size: 11pt; }
+  .frage p { margin: 0; color: #333b47; }
+
+  .liste-punkte { margin: 2mm 0 0; padding-left: 5mm; }
+  .liste-punkte li { margin: 1.5mm 0; }
+
+  .verwalter { margin-top: 5mm; padding: 5mm 6mm; border: 1.5px dashed #9fb3d1; border-radius: 12px; break-inside: avoid; }
+  .verwalter h3 { font-size: 12.5pt; margin-bottom: 2mm; }
+  .verwalter ul { margin: 0; padding-left: 5mm; }
+  .verwalter li { margin: 1mm 0; }
+</style>
+</head>
+<body>
+
+<!-- ===================== Seite 1: Deckblatt ===================== -->
+<section class="seite">
+  <div class="kopf">
+    <img src="../../pwa/icons/icon-192.png" alt="">
+    <div>
+      <h1>DocScan</h1>
+      <p>Anleitung: App installieren und loslegen</p>
+    </div>
+  </div>
+
+  <p class="intro">Mit DocScan fotografierst du Briefe und Rechnungen mit dem Handy. Die App macht daraus ein PDF, legt es sicher in unserem Google Drive ab und erkennt Rechnungen automatisch. Du brauchst dafür <b>keinen App Store</b> und kein Konto – nur den Link und deinen persönlichen Zugangscode.</p>
+
+  <div class="zwei">
+    <div class="box">
+      <h3><span class="nr-klein">1</span> Der Link zur App</h3>
+      <div class="link">jcd50827.github.io/Docscan</div>
+      <img class="qr" src="link-qr.svg" alt="QR-Code zur App">
+      <div class="klein">QR-Code mit der Handy-Kamera scannen oder den Link im Browser eintippen.</div>
+    </div>
+    <div class="box">
+      <h3><span class="nr-klein">2</span> Dein Zugangscode</h3>
+      <div class="klein">Bekommst du persönlich. Hier eintragen:</div>
+      <div class="code-feld"><span class="k"></span>–<span class="k"></span>–<span class="k"></span></div>
+      <div class="klein">Name:</div>
+      <div class="name-feld"></div>
+      <p class="klein" style="margin-top:3mm">Den Code <b>nicht weitergeben</b> – er gehört nur dir. Du kannst ihn aber auf all deinen eigenen Geräten benutzen.</p>
+    </div>
+  </div>
+
+  <div class="geraete">
+    <h2>Welches Gerät hast du?</h2>
+    <div class="geraet-liste">
+      <div class="geraet"><b>iPhone oder iPad</b><span>mit Safari</span><span class="seitenzahl">→ Seite 2</span></div>
+      <div class="geraet"><b>Android-Handy</b><span>mit Chrome</span><span class="seitenzahl">→ Seite 3</span></div>
+      <div class="geraet"><b>Computer</b><span>Mac oder Windows</span><span class="seitenzahl">→ Seite 3</span></div>
+    </div>
+  </div>
+
+  <div class="tipp">
+    <b>Danach:</b>
+    Wie du dein erstes Dokument scannst, steht auf Seite 4. Editoren aktivieren auf Seite 5 die Benachrichtigungen. Hilfe bei Problemen findest du auf Seite 6.
+  </div>
+</section>
+
+<!-- ===================== Seite 2: iPhone / iPad ===================== -->
+<section class="seite">
+  <div class="kapitel-kopf">
+    <div class="icon"><svg viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M11 18h2"/></svg></div>
+    <div><h2>iPhone und iPad</h2><p>Dauert etwa 2 Minuten</p></div>
+  </div>
+
+  <ol class="schritte">
+    <li class="schritt"><div class="nr">1</div><div>
+      <h4>Safari öffnen</h4>
+      <p>Das ist der blaue Kompass auf dem Home-Bildschirm. <b>Wichtig: Es muss Safari sein</b> – nicht Chrome, Firefox oder Google.</p></div></li>
+    <li class="schritt"><div class="nr">2</div><div>
+      <h4>Link öffnen</h4>
+      <p>Oben in die Adresszeile <b>jcd50827.github.io/Docscan</b> eintippen. Oder: Kamera-App öffnen, auf den QR-Code von Seite 1 richten und auf den gelben Link tippen.</p></div></li>
+    <li class="schritt"><div class="nr">3</div><div>
+      <h4>Auf „Teilen“ tippen</h4>
+      <p>Das ist das Symbol <span class="taste"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>Teilen</span> – ein Quadrat mit Pfeil nach oben. Beim iPhone unten in der Mitte, beim iPad oben rechts.</p></div></li>
+    <li class="schritt"><div class="nr">4</div><div>
+      <h4>„Zum Home-Bildschirm“ wählen</h4>
+      <p>In der Liste etwas nach unten wischen und <span class="taste"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M12 8v8M8 12h8"/></svg>Zum Home-Bildschirm</span> antippen. Dann oben rechts auf <span class="taste">Hinzufügen</span>.</p></div></li>
+    <li class="schritt"><div class="nr">5</div><div>
+      <h4>DocScan vom Home-Bildschirm starten</h4>
+      <p>Safari kannst du jetzt schließen. Ab sofort öffnest du DocScan immer über das neue <b>blaue DocScan-Symbol</b> auf deinem Home-Bildschirm – wie eine normale App.</p></div></li>
+    <li class="schritt"><div class="nr">6</div><div>
+      <h4>Zugangscode eingeben</h4>
+      <p>Deinen Code von Seite 1 eintippen (Groß-/Kleinschreibung und Bindestriche sind egal) und auf <span class="taste">Anmelden</span> tippen. Du bleibst danach angemeldet.</p></div></li>
+    <li class="schritt"><div class="nr">7</div><div>
+      <h4>Kamera erlauben</h4>
+      <p>Beim ersten Scannen fragt das iPhone, ob DocScan die Kamera benutzen darf: <span class="taste">Erlauben</span> tippen.</p></div></li>
+  </ol>
+
+  <div class="hinweis">
+    <b>„Zum Home-Bildschirm“ fehlt?</b>
+    Dann ist der Link nicht in Safari geöffnet. Link kopieren, Safari öffnen und dort einfügen.
+  </div>
+  <div class="tipp">
+    <b>Tipp für den ersten Scan</b>
+    Beim allerersten Scannen lädt die App einmalig die automatische Kantenerkennung (ca. 9 MB). Am besten im WLAN machen – danach geht es auch unterwegs schnell.
+  </div>
+</section>
+
+<!-- ===================== Seite 3: Android + Computer ===================== -->
+<section class="seite">
+  <div class="kapitel-kopf">
+    <div class="icon"><svg viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M10 5h4"/></svg></div>
+    <div><h2>Android-Handy</h2><p>z. B. Samsung, Google Pixel, Xiaomi</p></div>
+  </div>
+
+  <ol class="schritte">
+    <li class="schritt"><div class="nr">1</div><div>
+      <h4>Chrome öffnen und den Link aufrufen</h4>
+      <p><b>jcd50827.github.io/Docscan</b> eintippen oder den QR-Code von Seite 1 mit der Kamera scannen.</p></div></li>
+    <li class="schritt"><div class="nr">2</div><div>
+      <h4>App installieren</h4>
+      <p>Oben rechts auf <span class="taste">⋮</span> (drei Punkte) tippen und <span class="taste">App installieren</span> oder <span class="taste">Zum Startbildschirm hinzufügen</span> wählen. Mit <span class="taste">Installieren</span> bestätigen.</p></div></li>
+    <li class="schritt"><div class="nr">3</div><div>
+      <h4>DocScan starten und anmelden</h4>
+      <p>Über das neue DocScan-Symbol öffnen, Zugangscode eingeben, <span class="taste">Anmelden</span> tippen. Beim ersten Scan die Kamera <span class="taste">Zulassen</span>.</p></div></li>
+  </ol>
+
+  <div class="kapitel-kopf" style="margin-top:10mm">
+    <div class="icon"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></div>
+    <div><h2>Computer</h2><p>Mac oder Windows – praktisch für die Rechnungsliste</p></div>
+  </div>
+
+  <p style="margin:0 0 2mm">Gescannt wird mit dem Handy. Am Computer kannst du Rechnungen bequem ansehen, abhaken und bearbeiten. Eine Installation ist nicht nötig – der Link funktioniert in jedem Browser. Wer DocScan als eigenes Fenster möchte:</p>
+  <ol class="schritte">
+    <li class="schritt"><div class="nr">1</div><div>
+      <h4>Chrome oder Edge (Windows und Mac)</h4>
+      <p>Link öffnen, rechts in der Adresszeile auf das Symbol <span class="taste"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M12 8v6M9 11l3 3 3-3"/></svg>Installieren</span> klicken und bestätigen.</p></div></li>
+    <li class="schritt"><div class="nr">2</div><div>
+      <h4>Safari (Mac)</h4>
+      <p>Link öffnen, oben im Menü <span class="taste">Ablage</span> → <span class="taste">Zum Dock hinzufügen</span>.</p></div></li>
+    <li class="schritt"><div class="nr">3</div><div>
+      <h4>Anmelden</h4>
+      <p>Zugangscode eingeben – fertig. „Scannen“ öffnet am Computer die Dateiauswahl, damit kannst du vorhandene Fotos hochladen.</p></div></li>
+  </ol>
+</section>
+
+<!-- ===================== Seite 4: Scannen ===================== -->
+<section class="seite">
+  <div class="kapitel-kopf">
+    <div class="icon"><svg viewBox="0 0 24 24"><path d="M4 7V5a1 1 0 0 1 1-1h2M17 4h2a1 1 0 0 1 1 1v2M20 17v2a1 1 0 0 1-1 1h-2M7 20H5a1 1 0 0 1-1-1v-2M7 12h10"/></svg></div>
+    <div><h2>So scannst du ein Dokument</h2><p>Auch mehrseitige Briefe – in einem Rutsch</p></div>
+  </div>
+
+  <ol class="schritte">
+    <li class="schritt"><div class="nr">1</div><div>
+      <h4>Auf den großen blauen Knopf „Scannen“ tippen</h4>
+      <p>Die Kamera öffnet sich. Blatt auf einen <b>dunklen Tisch</b>, gutes Licht, von oben fotografieren. Vorhandene Fotos: darunter <span class="taste">oder Foto aus der Mediathek wählen</span>.</p></div></li>
+    <li class="schritt"><div class="nr">2</div><div>
+      <h4>Ecken prüfen</h4>
+      <p>DocScan erkennt die Blattränder automatisch und zeigt vier Punkte. Sitzen sie nicht genau auf den Ecken, einfach mit dem Finger <b>verschieben</b>. Dann <span class="taste">Übernehmen</span>.</p></div></li>
+    <li class="schritt"><div class="nr">3</div><div>
+      <h4>Weitere Seiten aufnehmen</h4>
+      <p>Mehrseitige Briefe: <span class="taste">+ Seite aufnehmen</span> und die nächste Seite fotografieren. Seite antippen = korrigieren oder neu aufnehmen, <span class="taste">×</span> = löschen.</p></div></li>
+    <li class="schritt"><div class="nr">4</div><div>
+      <h4>Hochladen</h4>
+      <p>Auf <span class="taste">Hochladen</span> tippen. Das dauert ein paar Sekunden, weil der Text gleich ausgelesen wird. Einen Titel musst du nicht eingeben.</p></div></li>
+    <li class="schritt"><div class="nr">5</div><div>
+      <h4>Fertig – Ergebnis prüfen</h4>
+      <p>Du siehst z. B. <b>„Erkannt als: Rechnung – Stadtwerke – 84,20 € – fällig 23.10.“</b> Das Dokument liegt jetzt im Google Drive. Das Original-Papier kannst du ablegen oder entsorgen.</p></div></li>
+  </ol>
+
+  <div class="tipp">
+    <b>Kein Internet?</b>
+    Kein Problem: Der Scan wird auf dem Handy gespeichert („Offline gespeichert“) und automatisch hochgeladen, sobald du wieder Internet hast und DocScan öffnest.
+  </div>
+
+  <div class="abschnitt">
+    <h3>Was du in der App siehst <span class="klein" style="font-weight:400">– deine Rolle steht in der App oben rechts unter ⋮</span></h3>
+    <table>
+      <tr><th>Funktion</th><th>Contributor</th><th>Editor</th></tr>
+      <tr><td>Dokumente scannen und hochladen</td><td class="ja">✓</td><td class="ja">✓</td></tr>
+      <tr><td>Eigene Scans der letzten 7 Tage sehen</td><td class="ja">✓</td><td class="ja">✓</td></tr>
+      <tr><td>Alle Rechnungen, offene Summe, Fälligkeiten</td><td class="nein">–</td><td class="ja">✓</td></tr>
+      <tr><td>Abhaken, korrigieren, GiroCode, Export</td><td class="nein">–</td><td class="ja">✓</td></tr>
+      <tr><td>Benachrichtigung bei neuen Dokumenten</td><td class="nein">–</td><td class="ja">✓</td></tr>
+    </table>
+  </div>
+</section>
+
+<!-- ===================== Seite 5: Benachrichtigungen ===================== -->
+<section class="seite">
+  <div class="kapitel-kopf">
+    <div class="icon"><svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></div>
+    <div><h2>Benachrichtigungen</h2><p>Für Editoren – wie bei WhatsApp, sobald jemand etwas scannt</p></div>
+  </div>
+
+  <p style="margin:0 0 2mm">Lädt jemand ein Dokument hoch, bekommst du ein Banner auf dem Handy und eine rote Zahl am DocScan-Symbol. Das musst du <b>auf jedem Gerät einmal</b> einschalten (Handy und Tablet getrennt).</p>
+
+  <ol class="schritte">
+    <li class="schritt"><div class="nr">1</div><div>
+      <h4>DocScan vom Home-Bildschirm öffnen</h4>
+      <p>Nur so sind Benachrichtigungen möglich – nicht im normalen Safari-Tab. iPhone und iPad brauchen <b>iOS 16.4 oder neuer</b>.</p></div></li>
+    <li class="schritt"><div class="nr">2</div><div>
+      <h4>Auf der Startseite ganz nach unten scrollen</h4>
+      <p>Im Bereich „Benachrichtigungen“ auf <span class="taste">🔔 Benachrichtigungen aktivieren</span> tippen.</p></div></li>
+    <li class="schritt"><div class="nr">3</div><div>
+      <h4>Erlauben</h4>
+      <p>Das iPhone fragt, ob DocScan Mitteilungen senden darf: <span class="taste">Erlauben</span> tippen.</p></div></li>
+    <li class="schritt"><div class="nr">4</div><div>
+      <h4>Ausprobieren</h4>
+      <p>Auf <span class="taste">Test senden</span> tippen – nach wenigen Sekunden erscheint eine Test-Benachrichtigung.</p></div></li>
+  </ol>
+
+  <div class="abschnitt">
+    <h3>Was dann passiert</h3>
+    <ul class="liste-punkte">
+      <li><b>Banner</b>, z. B. „Neues Dokument: Rechnung – Abfluss ASS GmbH – 412,30 € (von Anna)“. Antippen öffnet die Tracking-Liste.</li>
+      <li><b>Rote Zahl</b> <span class="zahl">2</span> am DocScan-Symbol, im Menü und auf „Zur Tracking-Liste“ – so viele Dokumente sind neu.</li>
+      <li>In der Tracking-Liste sind neue Dokumente mit <span class="neu">Neu</span> markiert. Sobald du die Liste öffnest, verschwindet die Zahl.</li>
+      <li>Deine <b>eigenen</b> Scans lösen bei dir keine Benachrichtigung aus.</li>
+    </ul>
+  </div>
+
+  <div class="hinweis">
+    <b>Keine Benachrichtigung bekommen?</b>
+    iPhone/iPad: <b>Einstellungen → Mitteilungen → DocScan → Mitteilungen erlauben</b> einschalten. Dann in DocScan erneut „Test senden“. Ausschalten geht jederzeit in der App mit <span class="taste">Ausschalten</span>.
+  </div>
+</section>
+
+<!-- ===================== Seite 6: Hilfe ===================== -->
+<section class="seite">
+  <div class="kapitel-kopf">
+    <div class="icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14M12 17.5v.01"/></svg></div>
+    <div><h2>Hilfe bei Problemen</h2><p>Die häufigsten Fragen</p></div>
+  </div>
+
+  <div class="faq">
+    <div class="frage"><h4>„Zugangscode ungültig“</h4>
+      <p>Code genau abtippen – leicht verwechselbare Zeichen wie 0/O oder 1/I kommen im Code nicht vor. Klappt es trotzdem nicht, beim Verwalter nachfragen.</p></div>
+    <div class="frage"><h4>„Dieser Zugang ist deaktiviert“</h4>
+      <p>Der Zugang wurde gesperrt. Bitte beim Verwalter melden.</p></div>
+    <div class="frage"><h4>„Zu viele Fehlversuche“</h4>
+      <p>Nach mehreren falschen Codes ist die Anmeldung kurz gesperrt. 15 Minuten warten und erneut versuchen.</p></div>
+    <div class="frage"><h4>Die Kamera öffnet sich nicht</h4>
+      <p>iPhone: <b>Einstellungen → Safari → Kamera → Erlauben</b>. Android: in den Chrome-Einstellungen unter <b>Website-Einstellungen → Kamera</b> erlauben.</p></div>
+    <div class="frage"><h4>Die App sieht alt aus oder eine neue Funktion fehlt</h4>
+      <p>DocScan aktualisiert sich selbst. App einmal ganz schließen (vom unteren Rand nach oben wischen und wegschieben) und neu öffnen.</p></div>
+    <div class="frage"><h4>„⏳ Scan wartet auf den Upload“</h4>
+      <p>Der Scan wurde ohne Internet gemacht. Sobald du wieder online bist, auf <span class="taste">Jetzt senden</span> tippen oder die App neu öffnen.</p></div>
+    <div class="frage"><h4>Etwas wurde falsch erkannt (Betrag, Absender, Datum)</h4>
+      <p>Das kann bei der automatischen Erkennung passieren. Als Editor über <span class="taste">Angaben korrigieren</span> ändern – sonst dem Verwalter kurz Bescheid geben.</p></div>
+    <div class="frage"><h4>Abmelden oder Gerät wechseln</h4>
+      <p>Oben rechts <b>⋮ → Abmelden</b>. Auf dem neuen Gerät einfach wieder installieren und mit demselben Code anmelden – Benachrichtigungen dort neu einschalten.</p></div>
+  </div>
+
+  <div class="verwalter">
+    <h3>Für den Verwalter</h3>
+    <ul>
+      <li><b>Neuen Zugang anlegen:</b> Google Sheet „DocScan“ am Computer öffnen → Menü <b>DocScan → Nutzer anlegen</b>. Den angezeigten Code sofort notieren – er wird nur einmal gezeigt.</li>
+      <li><b>Zugang sperren</b> (z. B. Handy verloren): Tab <b>Nutzer</b> → Häkchen bei <b>aktiv</b> entfernen. Angemeldete Geräte für Benachrichtigungen stehen im Tab <b>Geraete</b>.</li>
+      <li><b>Code vergessen:</b> Nutzer löschen bzw. deaktivieren und neu anlegen.</li>
+    </ul>
+  </div>
+</section>
+
+</body>
+</html>
